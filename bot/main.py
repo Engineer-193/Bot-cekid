@@ -1,12 +1,14 @@
-import sys, os, io, logging, asyncio, html
+import sys, os, io, logging, asyncio, html, getpass, re
 sys.path.insert(0, os.path.dirname(__file__))
 
 from datetime import datetime, timezone
+from pathlib import Path
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
 from telegram.constants import ParseMode
 from telethon import TelegramClient
 from telethon.sessions import StringSession
+from telethon.errors import SessionPasswordNeededError, PhoneCodeInvalidError, PhoneCodeExpiredError
 from telethon.tl.functions.users import GetFullUserRequest
 from telethon.tl.functions.channels import GetFullChannelRequest
 from telethon.tl.functions.messages import GetFullChatRequest
@@ -28,6 +30,9 @@ logging.basicConfig(
     datefmt="%d/%m/%Y %H:%M:%S",
 )
 log = logging.getLogger(__name__)
+
+# ── path ke .env ──────────────────────────────────────────────────────────────
+ENV_FILE = Path(__file__).parent / ".env"
 
 _client: TelegramClient | None = None
 
@@ -451,14 +456,126 @@ async def on_startup(app):
         log.error(f"Telethon startup error: {e}")
 
 
+# ── session setup interaktif ──────────────────────────────────────────────────
+
+def _save_env(key: str, value: str):
+    """Tulis atau update key=value di file .env."""
+    lines: list[str] = []
+    if ENV_FILE.exists():
+        lines = ENV_FILE.read_text(encoding="utf-8").splitlines()
+
+    updated = False
+    for i, line in enumerate(lines):
+        if line.startswith(f"{key}=") or line.startswith(f"{key} ="):
+            lines[i] = f"{key}={value}"
+            updated = True
+            break
+    if not updated:
+        lines.append(f"{key}={value}")
+
+    ENV_FILE.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+async def _interactive_setup() -> str:
+    """
+    Jalankan setup interaktif: minta nomor HP → OTP → password (opsional).
+    Kembalikan session string yang sudah valid.
+    """
+    print("\n" + "═" * 55)
+    print("   🔧  SETUP TELETHON SESSION — CekID Bot")
+    print("═" * 55)
+    print("   Session belum ada. Ikuti langkah di bawah ini.")
+    print("═" * 55 + "\n")
+
+    api_id   = TELETHON_API_ID
+    api_hash = TELETHON_API_HASH
+
+    if not api_id or not api_hash:
+        print("❌ TELETHON_API_ID / API_HASH belum diisi di .env!")
+        sys.exit(1)
+
+    # ── minta nomor HP ──────────────────────────────────────────────────────
+    while True:
+        phone = input("📱 Masukkan nomor HP (format: +628xxx): ").strip()
+        if re.match(r"^\+?\d{8,15}$", phone):
+            break
+        print("   ⚠️  Format tidak valid. Contoh: +6281234567890\n")
+
+    client = TelegramClient(StringSession(), api_id, api_hash)
+    await client.connect()
+
+    print(f"\n📨 Mengirim kode OTP ke {phone} …")
+    sent = await client.send_code_request(phone)
+    print("✅ Kode OTP dikirim!\n")
+
+    # ── minta kode OTP ──────────────────────────────────────────────────────
+    for attempt in range(3):
+        otp = input("🔢 Masukkan kode OTP yang diterima: ").strip()
+        try:
+            await client.sign_in(phone, otp, phone_code_hash=sent.phone_code_hash)
+            break
+        except PhoneCodeInvalidError:
+            print(f"   ❌ Kode salah. Sisa percobaan: {2 - attempt}\n")
+            if attempt == 2:
+                print("❌ Terlalu banyak percobaan. Restart bot dan coba lagi.")
+                await client.disconnect()
+                sys.exit(1)
+        except PhoneCodeExpiredError:
+            print("❌ Kode OTP sudah kadaluarsa. Restart bot untuk minta kode baru.")
+            await client.disconnect()
+            sys.exit(1)
+        except SessionPasswordNeededError:
+            # ── 2FA ─────────────────────────────────────────────────────────
+            print("\n🔐 Akun kamu pakai 2FA (Two-Step Verification).")
+            for pw_attempt in range(3):
+                pw = getpass.getpass("🔑 Masukkan password 2FA: ")
+                try:
+                    await client.sign_in(password=pw)
+                    break
+                except Exception as e:
+                    print(f"   ❌ Password salah: {e}")
+                    if pw_attempt == 2:
+                        print("❌ Terlalu banyak percobaan. Restart dan coba lagi.")
+                        await client.disconnect()
+                        sys.exit(1)
+            break
+
+    session_str = client.session.save()
+    await client.disconnect()
+
+    # ── simpan ke .env ──────────────────────────────────────────────────────
+    _save_env("TELETHON_SESSION", session_str)
+    os.environ["TELETHON_SESSION"] = session_str
+
+    print("\n" + "═" * 55)
+    print("✅ SESSION BERHASIL DIBUAT DAN DISIMPAN KE .env!")
+    print("   Mulai sekarang bot langsung jalan tanpa setup ulang.")
+    print("═" * 55 + "\n")
+
+    return session_str
+
+
 # ── entry ─────────────────────────────────────────────────────────────────────
 
 def main():
+    # ── validasi konfigurasi wajib ──────────────────────────────────────────
     if not BOT_TOKEN:
-        log.error("❌ BOT_TOKEN tidak ada!"); sys.exit(1)
+        print("\n❌ BOT_TOKEN belum diisi di .env!\n   Isi dulu lalu restart.\n")
+        sys.exit(1)
     if not TELETHON_API_ID or not TELETHON_API_HASH:
-        log.error("❌ TELETHON_API_ID / API_HASH tidak ada!"); sys.exit(1)
+        print("\n❌ TELETHON_API_ID / TELETHON_API_HASH belum diisi di .env!\n")
+        sys.exit(1)
 
+    # ── setup session jika belum ada ────────────────────────────────────────
+    global TELETHON_SESSION
+    if not TELETHON_SESSION:
+        try:
+            TELETHON_SESSION = asyncio.run(_interactive_setup())
+        except KeyboardInterrupt:
+            print("\n\n⛔ Setup dibatalkan oleh user.")
+            sys.exit(0)
+
+    # ── jalankan bot ────────────────────────────────────────────────────────
     log.info("🤖 Memulai CekID Bot...")
     app = ApplicationBuilder().token(BOT_TOKEN).post_init(on_startup).build()
     app.add_handler(CommandHandler("start", cmd_start))
