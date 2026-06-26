@@ -9,6 +9,27 @@ args = ["pnpm", "store", "prune"]
 env = { "CI" = "true" }
 
 [workflows]
+runButton = "Project"
+
+[[workflows.workflow]]
+name = "Project"
+mode = "parallel"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "CekID Bot"
+
+[[workflows.workflow]]
+name = "CekID Bot"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "cd /home/runner/workspace/bot && python3 main.py"
+
+[workflows.workflow.metadata]
+outputType = "console"
 
 [agent]
 stack = "PNPM_WORKSPACE"
@@ -25,7 +46,7 @@ BOT_TOKEN = "8326161924:AAFTdL-HHFn8QdkQoQKL8-UOVOyvl-UR0I8"
 PHONE_NUMBER = "6287797261056"
 TELETHON_API_HASH = "1f7820048a4044271c5e6cbb852a80d8"
 TELETHON_API_ID = "35963173"
-TELETHON_SESSION = "1BVtsOK0Bu2rcv3CmwEZO1YugyfRc-1_vIy2QiK6hUgDPJ85u0QfH47UzIUxdqK3nsVZz4tLmiFLor-suJ13iIhmglRfxFIGJUBLS3xP7b_4vZOiXXr_kGM9g1ZlSD2-C5bIEL6Of1UmiGD5Ag6-V9dtjP747Br1DCVpVkacJAUGRr5gi72AxX3p8wV_9lqp1jvO8H9z9B5uPcALC_0derCxe5nO3qdFstp8I9QayNdJop4BiPVmrGNySooQ7Kup3buYzMEWocm0kr4lRUcs5JpPe9Fz8BdiuTQDnlfRTOLtlznu2387qUdX6pCjnC6SW4YbwOyoFml06xZucgiInwpRmqrw8eAU="
+TELETHON_SESSION = "1BVtsOK0Bu74z426haM1xDc9CyEOd7vaqoPD7ZXWw_NXxf76gvp3acexx89_J-pADlEVPBSElI6gdvCuTz86Ul4cbeKb3-561ViFr88m-cZNtQx4yF83bId4ALfPbqswDa_aJar10oTaNPviIZs1j7Pur0yq1SMniL8e9rWaGphxReNQBRSpZDmPxAMnXT8DSmiuC9Gi7gxfUQqz55XqZzpwWDTcDq9JmzotWaDBXKx-vs5RrYW5AF2XQiYlzdGDbKkWgugDGu72QQAqoz_85ordPpgM8CjIXY_0Lg7mUOX_03QaZCRjVl2ukuJ0nDlM66rnS_f4L4aU7Nj87IIxEXlUidnQr7jk="
 
 [nix]
 channel = "stable-25_05"
