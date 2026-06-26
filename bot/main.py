@@ -37,31 +37,32 @@ _client: TelegramClient | None = None
 def ce(emoji_id: str, fallback: str) -> str:
     return f'<tg-emoji emoji-id="{emoji_id}">{fallback}</tg-emoji>'
 
-E_MENTION   = ce("5814298877309751946", "🌟")   # bintang emas
-E_ID        = ce("5307843983102204243", "🔑")   # kunci emas
-E_USERNAME  = ce("5188381825701021648", "🌐")   # globe
-E_DC        = ce("5215186239853964761", "🖥")   # monitor/komputer
-E_PREMIUM   = ce("5891044423856296980", "💎")   # berlian
-E_DATE      = ce("5413879192267805083", "📅")   # kalender
-E_COLOR     = ce("5219688538106239995", "🎨")   # palet
-E_BOT       = ce("5188481279963715781", "🚀")   # roket
-E_SCAM      = ce("6269245551586316810", "🚫")   # lingkaran merah larangan
-E_RESTRICT  = ce("5215669479509335000", "🛡")   # perisai biru
-E_VERIFIED  = ce("5215326869968136718", "✅")   # centang merah
-E_BIO       = ce("5215209935188534658", "📋")   # clipboard/catatan
-E_LASTSEEN  = ce("5215394081911351762", "🕐")   # jam
-E_CHATID    = ce("5307843983102204243", "🔑")   # kunci emas
-E_TITLE     = ce("5814298877309751946", "🌟")   # bintang emas
-E_TYPE      = ce("6269223265001017592", "🔴")   # dot merah
-E_FAKE      = ce("6269245551586316810", "🚫")   # lingkaran merah (sama seperti scam)
-E_NOFORWARD = ce("5215669479509335000", "🛡")   # perisai biru (gembok/dilindungi)
-E_MEMBERS   = ce("5348136664738839786", "👥")   # orang-orang
-E_DESC      = ce("5215209935188534658", "📋")   # clipboard/catatan
-E_INFO      = ce("5258503720928288433", "ℹ️")   # info
-E_ROCKET    = ce("5188481279963715781", "🚀")   # roket
-E_BELL      = ce("6271271702408204490", "🔔")   # bel kuning
-E_HOURGLASS = ce("5212985021870123409", "⏳")   # pasir/hourglass
-E_CLOCK     = ce("5215394081911351762", "🕐")   # jam
+# ID dari AnimatedEmojies (free pack — render untuk SEMUA user, tanpa Premium)
+E_MENTION   = ce("4909285470598333031", "⭐")   # bintang emas  (free ✓)
+E_ID        = ce("5089568170251911687", "🔑")   # kunci          (free ✓)
+E_USERNAME  = ce("5188381825701021648", "🌐")   # globe          (original)
+E_DC        = ce("4906902450943820893", "💻")   # komputer       (free ✓)
+E_PREMIUM   = ce("4907219728767910669", "💎")   # berlian        (free ✓)
+E_DATE      = ce("4913632707646325447", "📆")   # kalender       (free ✓)
+E_COLOR     = ce("4908971929395791571", "🎨")   # palet warna    (free ✓)
+E_BOT       = ce("4906908665761497930", "🚀")   # roket          (free ✓)
+E_SCAM      = ce("6269245551586316810", "🚫")   # larangan       (original)
+E_RESTRICT  = ce("5215669479509335000", "🛡")   # perisai        (original)
+E_VERIFIED  = ce("5086854541194822683", "✅")   # centang        (free ✓)
+E_BIO       = ce("5215209935188534658", "📋")   # clipboard      (original)
+E_LASTSEEN  = ce("4909244268977062445", "⏳")   # jam/hourglass  (free ✓)
+E_CHATID    = ce("5089568170251911687", "🔑")   # kunci          (free ✓)
+E_TITLE     = ce("4909285470598333031", "⭐")   # bintang emas   (free ✓)
+E_TYPE      = ce("6269223265001017592", "🔴")   # dot merah      (original)
+E_FAKE      = ce("6269245551586316810", "🚫")   # larangan       (original)
+E_NOFORWARD = ce("5215669479509335000", "🛡")   # perisai        (original)
+E_MEMBERS   = ce("5089320092940895083", "👥")   # orang-orang    (free ✓)
+E_DESC      = ce("5215209935188534658", "📋")   # clipboard      (original)
+E_INFO      = ce("5258503720928288433", "ℹ️")   # info           (original)
+E_ROCKET    = ce("4906908665761497930", "🚀")   # roket          (free ✓)
+E_BELL      = ce("6271271702408204490", "🔔")   # bel            (original)
+E_HOURGLASS = ce("4909244268977062445", "⏳")   # hourglass      (free ✓)
+E_CLOCK     = ce("4909244268977062445", "⏳")   # hourglass/jam  (free ✓)
 
 
 # ── helpers ───────────────────────────────────────────────────────────────────
@@ -250,7 +251,7 @@ def caption_user(d: dict, is_self: bool) -> str:
 
     if is_self:
         text = (
-            f"─── 🤖 <b><u>INFORMASI PROFIL</u></b> 🤖 ───\n\n"
+            f"─── {E_ROCKET} <b><u>INFORMASI PROFIL</u></b> {E_ROCKET} ───\n\n"
             f"<blockquote>"
             f"──── {E_ROCKET} Berikut adalah detail profil Anda saat ini:\n\n"
             f"{E_MENTION} <b>Mention</b> » {mention}\n"
@@ -272,7 +273,7 @@ def caption_user(d: dict, is_self: bool) -> str:
         lastseen = html.escape(str(d['last_seen']))
 
         text = (
-            f"─── 👥 <b><u>INFORMASI PROFIL TARGET</u></b> 👥 ───\n\n"
+            f"─── {E_MEMBERS} <b><u>INFORMASI PROFIL TARGET</u></b> {E_MEMBERS} ───\n\n"
             f"<blockquote>"
             f"──── {E_ROCKET} Berikut adalah detail profil target:\n\n"
             f"{E_MENTION} <b>Mention</b> » {mention}\n"
@@ -304,7 +305,7 @@ def caption_chat(d: dict) -> str:
     members  = d['members'] if d['members'] is not None else '?'
 
     text = (
-        f"─── 🌐 <b><u>INFORMASI CHAT TARGET</u></b> 🌐 ───\n\n"
+        f"─── {E_INFO} <b><u>INFORMASI CHAT TARGET</u></b> {E_INFO} ───\n\n"
         f"<blockquote>"
         f"──── {E_INFO} Data obrolan berhasil ditemukan:\n\n"
         f"{E_CHATID} <b>Chat ID</b> » <code>{chat_id}</code>\n"
