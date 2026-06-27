@@ -600,13 +600,15 @@ async def telethon_client() -> TelegramClient:
     global _client
     if _client and _client.is_connected():
         return _client
-    # Baca langsung dari .env file supaya tidak terpotong oleh env variable
-    sess = TELETHON_SESSION
+    # Prioritas: env var langsung (Replit secrets) → .env file
+    sess = os.environ.get("TELETHON_SESSION", TELETHON_SESSION)
     env_path = Path(__file__).parent / ".env"
     if env_path.exists():
         for line in env_path.read_text(encoding="utf-8").splitlines():
             if line.startswith("TELETHON_SESSION="):
-                sess = line.split("=", 1)[1].strip()
+                val = line.split("=", 1)[1].strip()
+                if val and len(val) >= 100:
+                    sess = val
                 break
     _client = TelegramClient(StringSession(sess), TELETHON_API_ID, TELETHON_API_HASH)
     await _client.connect()
@@ -798,42 +800,25 @@ def caption_chat(d: dict) -> str:
     )
 
 
-class StyledInlineKeyboardButton(InlineKeyboardButton):
-    """InlineKeyboardButton dengan support Bot API 9.4+ style (danger/primary/etc).
-    PTB belum punya parameter style secara native, jadi kita override to_dict()
-    supaya field 'style' ikut dikirim ke Telegram API.
-    """
-
-    def __init__(self, text: str, style: str | None = None, **kwargs):
-        super().__init__(text, **kwargs)
-        self._style = style
-
-    def to_dict(self, **kwargs) -> dict:
-        data = super().to_dict(**kwargs)
-        if self._style:
-            data["style"] = self._style
-        return data
-
-
 def kb() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([
-        [StyledInlineKeyboardButton(" JOIN STORE KAMI ", url=STORE_LINK, style="danger")],
+        [InlineKeyboardButton("🛒 JOIN STORE KAMI", url=STORE_LINK)],
     ])
 
 
 def kb_admin() -> InlineKeyboardMarkup:
     """Keyboard panel admin — tiap button beda warna, satu baris satu button."""
     return InlineKeyboardMarkup([
-        [StyledInlineKeyboardButton("📣  BROADCAST",     callback_data="admin_broadcast", style="danger")],
-        [StyledInlineKeyboardButton("⏱️  Limit Harian",  callback_data="admin_limit",     style="warning")],
-        [StyledInlineKeyboardButton("📊  Statistik Bot", callback_data="admin_stats",     style="success")],
+        [InlineKeyboardButton("📣  BROADCAST",     callback_data="admin_broadcast")],
+        [InlineKeyboardButton("⏱️  Limit Harian",  callback_data="admin_limit")],
+        [InlineKeyboardButton("📊  Statistik Bot", callback_data="admin_stats")],
     ])
 
 
 def kb_admin_back() -> InlineKeyboardMarkup:
     """Keyboard satu tombol kembali ke panel admin utama."""
     return InlineKeyboardMarkup([
-        [StyledInlineKeyboardButton("🔙  Kembali ke Panel Admin", callback_data="admin_back", style="secondary")],
+        [InlineKeyboardButton("🔙  Kembali ke Panel Admin", callback_data="admin_back")],
     ])
 
 
