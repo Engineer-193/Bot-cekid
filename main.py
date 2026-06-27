@@ -802,23 +802,23 @@ def caption_chat(d: dict) -> str:
 
 def kb() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("🛒 JOIN STORE KAMI", url=STORE_LINK)],
+        [InlineKeyboardButton("🔴  JOIN STORE KAMI  🔴", url=STORE_LINK)],
     ])
 
 
 def kb_admin() -> InlineKeyboardMarkup:
-    """Keyboard panel admin — tiap button beda warna, satu baris satu button."""
+    """Keyboard panel admin — tiap button beda warna via emoji."""
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("📣  BROADCAST",     callback_data="admin_broadcast")],
-        [InlineKeyboardButton("⏱️  Limit Harian",  callback_data="admin_limit")],
-        [InlineKeyboardButton("📊  Statistik Bot", callback_data="admin_stats")],
+        [InlineKeyboardButton("🔴  📣  BROADCAST",     callback_data="admin_broadcast")],
+        [InlineKeyboardButton("🟡  ⏱️  Limit Harian",  callback_data="admin_limit")],
+        [InlineKeyboardButton("🟢  📊  Statistik Bot", callback_data="admin_stats")],
     ])
 
 
 def kb_admin_back() -> InlineKeyboardMarkup:
     """Keyboard satu tombol kembali ke panel admin utama."""
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("🔙  Kembali ke Panel Admin", callback_data="admin_back")],
+        [InlineKeyboardButton("🔵  🔙  Kembali ke Panel Admin", callback_data="admin_back")],
     ])
 
 
