@@ -64,7 +64,7 @@ from PIL import Image, ImageDraw, ImageFont
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     ApplicationBuilder, CommandHandler, MessageHandler,
-    filters, ContextTypes,
+    CallbackQueryHandler, filters, ContextTypes,
 )
 from telegram.constants import ParseMode
 
@@ -789,7 +789,13 @@ def caption_chat(d: dict) -> str:
 
 def kb() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("JOIN STORE KAMI", url=STORE_LINK)],
+        [InlineKeyboardButton("🏪  JOIN STORE KAMI", url=STORE_LINK)],
+        [
+            InlineKeyboardButton("📊 Cara Cek User",    callback_data="help_user"),
+            InlineKeyboardButton("📢 Cara Cek Channel", callback_data="help_channel"),
+        ],
+        [InlineKeyboardButton("👑  Cek ID Saya",        callback_data="myid")],
+        [InlineKeyboardButton("📞  Hubungi Owner",      url=STORE_LINK)],
     ])
 
 
@@ -1053,6 +1059,49 @@ def _read_session_from_env() -> str:
     return ""
 
 
+# ══════════════════════════════════════════════════════════════════════════════
+#  CALLBACK QUERY HANDLER
+# ══════════════════════════════════════════════════════════════════════════════
+
+async def cmd_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
+    await q.answer()
+    cid = q.message.chat_id
+
+    if q.data == "help_user":
+        text = (
+            "📊 <b>Cara Cek User</b>\n\n"
+            "Kirim salah satu ke bot ini:\n"
+            "• <code>@username</code> — cek lewat username\n"
+            "• <code>123456789</code> — cek lewat User ID\n\n"
+            "<b>💡 Contoh:</b> ketik <code>@durov</code> lalu kirim."
+        )
+    elif q.data == "help_channel":
+        text = (
+            "📢 <b>Cara Cek Channel / Grup</b>\n\n"
+            "Kirim salah satu ke bot ini:\n"
+            "• <code>@namaChannel</code> — cek lewat username\n"
+            "• Link invite: <code>https://t.me/+xxxx</code>\n\n"
+            "<b>💡 Contoh:</b> ketik <code>@telegram</code> lalu kirim."
+        )
+    elif q.data == "myid":
+        user = q.from_user
+        cname, chex, cemoji = profile_color(user.id)
+        text = (
+            f"👤 <b>Info ID Kamu</b>\n\n"
+            f"• <b>Nama:</b> {html.escape(user.full_name)}\n"
+            f"• <b>ID:</b> <code>{user.id}</code>\n"
+            f"• <b>Username:</b> {'@' + user.username if user.username else '—'}\n"
+            f"• <b>Warna Profil:</b> {cemoji} {cname}\n"
+            f"• <b>Perkiraan Daftar:</b> {estimate_date(user.id)}\n"
+            f"• <b>Info ID:</b> {id_info(user.id)}\n"
+        )
+    else:
+        text = "❓ Perintah tidak dikenal."
+
+    await ctx.bot.send_message(cid, text, parse_mode=ParseMode.HTML, reply_markup=kb())
+
+
 def main():
     # ── Validasi wajib ──────────────────────────────────────────────────────────
     if not BOT_TOKEN:
@@ -1080,6 +1129,7 @@ def main():
     app.add_handler(CommandHandler("start",     cmd_start))
     app.add_handler(CommandHandler("stats",     cmd_stats))
     app.add_handler(CommandHandler("broadcast", cmd_broadcast))
+    app.add_handler(CallbackQueryHandler(cmd_callback))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, cmd_msg))
     app.add_error_handler(on_error)
     log.info("✅ Bot siap!\n")
