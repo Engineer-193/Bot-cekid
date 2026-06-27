@@ -717,7 +717,7 @@ def caption_user(d: dict, is_self: bool) -> str:
 
     if is_self:
         return (
-            f"{'─'*3} {E_ROCKET} <b><u>✦ INFORMASI PROFIL ✦</u></b> {E_ROCKET} {'─'*3}\n\n"
+            f"<u>{'─'*3} {E_ROCKET} <b>✦ INFORMASI PROFIL ✦</b> {E_ROCKET} {'─'*3}</u>\n\n"
             f"<blockquote>"
             f"{'─'*4} {E_ROCKET} <b>Berikut adalah detail profil Anda saat ini:</b>\n\n"
             f"{E_MENTION} <b>Mention</b>        »  <b>{mention}</b>\n"
@@ -728,7 +728,7 @@ def caption_user(d: dict, is_self: bool) -> str:
             f"{E_DATE} <b>Estimasi Dibuat</b> »  <b>{est_date}</b>\n"
             f"{E_COLOR} <b>Warna Profil</b>   »  <b>{cemoji} {cname}</b>"
             f"</blockquote>\n\n"
-            f"<b>{E_BELL} Kirim ID atau Username pengguna/grup/channel untuk mengecek informasi. 🔥</b>"
+            f"<u><b>{E_BELL} Kirim ID atau Username pengguna/grup/channel untuk mengecek informasi. 🔥</b></u>"
         )
     else:
         raw_bio = d["bio"]
@@ -737,7 +737,7 @@ def caption_user(d: dict, is_self: bool) -> str:
         bio_val  = html.escape(str(raw_bio))
         lastseen = html.escape(str(d['last_seen']))
         return (
-            f"{'─'*3} {E_MEMBERS} <b><u>✦ INFORMASI PROFIL TARGET ✦</u></b> {E_MEMBERS} {'─'*3}\n\n"
+            f"<u>{'─'*3} {E_MEMBERS} <b>✦ INFORMASI PROFIL TARGET ✦</b> {E_MEMBERS} {'─'*3}</u>\n\n"
             f"<blockquote>"
             f"{'─'*4} {E_ROCKET} <b>Berikut adalah detail profil target:</b>\n\n"
             f"{E_MENTION} <b>Mention</b>        »  <b>{mention}</b>\n"
@@ -754,7 +754,7 @@ def caption_user(d: dict, is_self: bool) -> str:
             f"{E_BIO} <b>Bio</b>             »  <b>{bio_val}</b>\n"
             f"{E_LASTSEEN} <b>Terakhir Dilihat</b> »  <b>{lastseen}</b>"
             f"</blockquote>\n\n"
-            f"<b>{E_BELL} Kirim ID atau Username pengguna/grup/channel untuk mengecek informasi.</b>"
+            f"<u><b>{E_BELL} Kirim ID atau Username pengguna/grup/channel untuk mengecek informasi.</b></u>"
         )
 
 
@@ -767,7 +767,7 @@ def caption_chat(d: dict) -> str:
     desc     = html.escape(str(d['desc']))
     members  = d['members'] if d['members'] is not None else '?'
     return (
-        f"{'─'*3} {E_INFO} <b><u>✦ INFORMASI CHAT TARGET ✦</u></b> {E_INFO} {'─'*3}\n\n"
+        f"<u>{'─'*3} {E_INFO} <b>✦ INFORMASI CHAT TARGET ✦</b> {E_INFO} {'─'*3}</u>\n\n"
         f"<blockquote>"
         f"{'─'*4} {E_INFO} <b>Data obrolan berhasil ditemukan:</b>\n\n"
         f"{E_CHATID} <b>Chat ID</b>        »  <b><code>{chat_id}</code></b>\n"
@@ -783,13 +783,13 @@ def caption_chat(d: dict) -> str:
         f"{E_NOFORWARD} <b>Dilindungi</b>  »  <b>{'🔒 Ya' if d['noforwards'] else '✅ Tidak'}</b>\n"
         f"{E_DESC} <b>Deskripsi</b>        »  <b>{desc}</b>"
         f"</blockquote>\n\n"
-        f"<b>{E_BELL} Kirim ID atau Username pengguna/grup/channel untuk mengecek informasi.</b>"
+        f"<u><b>{E_BELL} Kirim ID atau Username pengguna/grup/channel untuk mengecek informasi.</b></u>"
     )
 
 
 def kb() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("🏪 JOIN STORE KAMI", url=STORE_LINK)],
+        [InlineKeyboardButton("🔴 JOIN STORE KAMI 🔴", url=STORE_LINK)],
     ])
 
 
@@ -810,7 +810,7 @@ async def send_user_card(chat_id: int, d: dict, ctx: ContextTypes.DEFAULT_TYPE, 
 def _err_msg(detail: str = "") -> str:
     extra = f"\n\n<blockquote><b>🔍 Detail:</b> <code>{html.escape(str(detail)[:200])}</code></blockquote>" if detail else ""
     return (
-        f"<b>{'─'*3} ❌ <u>GAGAL MENGAMBIL DATA</u> ❌ {'─'*3}</b>\n\n"
+        f"<u><b>{'─'*3} ❌ GAGAL MENGAMBIL DATA ❌ {'─'*3}</b></u>\n\n"
         f"<blockquote>"
         f"<b>⚠️ Terjadi kesalahan saat memproses permintaan.</b>\n\n"
         f"<b>Kemungkinan penyebab:</b>\n"
@@ -819,7 +819,7 @@ def _err_msg(detail: str = "") -> str:
         f"<b>• Koneksi Telethon terputus</b>"
         f"</blockquote>"
         f"{extra}\n\n"
-        f"<b>🔄 Silakan coba lagi dengan ketik /start</b>"
+        f"<u><b>🔄 Silakan coba lagi dengan ketik /start</b></u>"
     )
 
 
@@ -970,7 +970,7 @@ async def cmd_stats(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     total = len(get_all_user_ids())
     now   = datetime.now(timezone.utc).strftime("%d/%m/%Y %H:%M UTC")
     await update.message.reply_text(
-        f"<b>📊 STATISTIK BOT</b>\n\n"
+        f"<u><b>📊 STATISTIK BOT</b></u>\n\n"
         f"<blockquote>"
         f"👥 <b>Total Pengguna</b>  »  <b>{total:,}</b>\n"
         f"🕐 <b>Waktu Sekarang</b>  »  <b>{now}</b>"
@@ -1004,7 +1004,7 @@ async def cmd_broadcast(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     )
 
     broadcast_text = (
-        f"📢 <b>PESAN DARI ADMIN</b>\n\n"
+        f"<u><b>📢 PESAN DARI ADMIN</b></u>\n\n"
         f"<blockquote>{html.escape(text)}</blockquote>"
     )
 
@@ -1016,7 +1016,7 @@ async def cmd_broadcast(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             fail += 1
 
     await status_msg.edit_text(
-        f"✅ <b>Broadcast selesai!</b>\n\n"
+        f"<u><b>✅ Broadcast selesai!</b></u>\n\n"
         f"<blockquote>"
         f"📨 <b>Terkirim</b>  »  <b>{ok}</b>\n"
         f"❌ <b>Gagal</b>     »  <b>{fail}</b>\n"
@@ -1051,6 +1051,17 @@ def _read_session_from_env() -> str:
                 if val:
                     return val
     return ""
+
+
+def _is_valid_session(sess: str) -> bool:
+    """Cek apakah session string adalah Telethon StringSession yang valid.
+    Session valid berupa string base64 panjang (>= 100 karakter).
+    Placeholder seperti 'isi_setelah_jalankan_gensession' dianggap tidak valid.
+    """
+    if not sess or len(sess) < 100:
+        return False
+    valid_chars = set("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=_-")
+    return all(c in valid_chars for c in sess.strip())
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -1105,17 +1116,23 @@ def main():
         print("\n❌ TELETHON_API_ID / TELETHON_API_HASH belum diisi di .env!\n")
         sys.exit(1)
 
-    # ── Cek session — auto jalankan gensession jika belum ada ──────────────────
-    if "--gensession" in sys.argv or not _read_session_from_env():
-        if not _read_session_from_env():
+    # ── Cek session — WAJIB generate session dulu sebelum bot bisa jalan ───────
+    sess = _read_session_from_env()
+    if "--gensession" in sys.argv or not _is_valid_session(sess):
+        if not _is_valid_session(sess):
             print("\n" + "═" * 55)
-            print("  ⚠️  TELETHON SESSION BELUM ADA")
+            print("  ⚠️  TELETHON SESSION BELUM ADA ATAU TIDAK VALID!")
+            print("  Bot tidak bisa jalan tanpa session yang valid.")
             print("  Memulai proses generate session otomatis...")
             print("═" * 55 + "\n")
         asyncio.run(_run_gensession())
         if "--gensession" in sys.argv:
             return
-        # Lanjut jalankan bot setelah session berhasil dibuat
+        # Validasi ulang setelah gensession
+        sess = _read_session_from_env()
+        if not _is_valid_session(sess):
+            print("\n❌ Session gagal dibuat. Jalankan ulang: python3 main.py --gensession\n")
+            sys.exit(1)
         print("\n▶️  Session tersimpan. Memulai bot...\n")
 
     log.info("🤖 Memulai CekID Bot...")
