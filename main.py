@@ -789,13 +789,7 @@ def caption_chat(d: dict) -> str:
 
 def kb() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("🏪  JOIN STORE KAMI", url=STORE_LINK)],
-        [
-            InlineKeyboardButton("📊 Cara Cek User",    callback_data="help_user"),
-            InlineKeyboardButton("📢 Cara Cek Channel", callback_data="help_channel"),
-        ],
-        [InlineKeyboardButton("👑  Cek ID Saya",        callback_data="myid")],
-        [InlineKeyboardButton("📞  Hubungi Owner",      url=STORE_LINK)],
+        [InlineKeyboardButton("🔴 JOIN STORE KAMI 🔴", url=STORE_LINK)],
     ])
 
 
