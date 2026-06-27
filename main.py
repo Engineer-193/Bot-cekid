@@ -1151,6 +1151,8 @@ def main():
             print("\n❌ Session gagal dibuat. Jalankan ulang: python3 main.py --gensession\n")
             sys.exit(1)
         print("\n▶️  Session tersimpan. Memulai bot...\n")
+        # asyncio.run() menutup event loop — buat baru sebelum PTB start
+        asyncio.set_event_loop(asyncio.new_event_loop())
 
     log.info("🤖 Memulai CekID Bot...")
     app = ApplicationBuilder().token(BOT_TOKEN).post_init(on_startup).build()
