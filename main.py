@@ -821,6 +821,15 @@ def kb() -> InlineKeyboardMarkup:
     ])
 
 
+def kb_admin() -> InlineKeyboardMarkup:
+    """Keyboard panel admin — tiap button beda warna, satu baris satu button."""
+    return InlineKeyboardMarkup([
+        [StyledInlineKeyboardButton("📣  BROADCAST",     callback_data="admin_broadcast", style="danger")],
+        [StyledInlineKeyboardButton("⏱️  Limit Harian",  callback_data="admin_limit",     style="warning")],
+        [StyledInlineKeyboardButton("📊  Statistik Bot", callback_data="admin_stats",     style="success")],
+    ])
+
+
 async def send_user_card(chat_id: int, d: dict, ctx: ContextTypes.DEFAULT_TYPE, is_self: bool):
     card = generate_card(
         mention=d["mention"], user_id=str(d["uid"]), username=d["username"],
@@ -990,6 +999,45 @@ async def cmd_msg(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             pass
 
 
+async def cmd_admin(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+    if user.id not in ADMIN_IDS:
+        await update.message.reply_text(
+            "⛔ <b>Akses ditolak. Hanya admin!</b>", parse_mode=ParseMode.HTML
+        )
+        return
+
+    uid      = user.id
+    username = f"@{user.username}" if user.username else user.full_name
+
+    # Auto-detect DC admin via Telethon
+    dc_str = "Mendeteksi..."
+    try:
+        cl      = await telethon_client()
+        entity  = await cl.get_entity(uid)
+        dc_raw  = getattr(getattr(entity, "photo", None), "dc_id", None)
+        dc_str  = dc_label(dc_raw)
+    except Exception:
+        dc_str = dc_label(None)
+
+    total_users = len(get_all_user_ids())
+    now         = datetime.now(timezone.utc).strftime("%d/%m/%Y %H:%M UTC")
+
+    text = (
+        f"<u><b>👑 PANEL ADMIN</b></u>\n\n"
+        f"<b>Hallo Sayang! Selamat datang di perintah admin 💕</b>\n\n"
+        f"<blockquote>"
+        f"👤 <b>Username</b>    »  <b>{html.escape(username)}</b>\n"
+        f"🆔 <b>ID</b>          »  <b><code>{uid}</code></b>\n"
+        f"💻 <b>DC Server</b>   »  <b>{html.escape(dc_str)}</b>\n"
+        f"👥 <b>Total User</b>  »  <b>{total_users:,}</b>\n"
+        f"🕐 <b>Waktu</b>       »  <b>{now}</b>"
+        f"</blockquote>\n\n"
+        f"<u><b>📋 Pilih perintah di bawah ini:</b></u>"
+    )
+    await update.message.reply_text(text, parse_mode=ParseMode.HTML, reply_markup=kb_admin())
+
+
 async def cmd_stats(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     if user.id not in ADMIN_IDS:
@@ -1129,10 +1177,65 @@ async def cmd_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             f"• <b>Perkiraan Daftar:</b> {estimate_date(user.id)}\n"
             f"• <b>Info ID:</b> {id_info(user.id)}\n"
         )
+        await ctx.bot.send_message(cid, text, parse_mode=ParseMode.HTML, reply_markup=kb())
+        return
+
+    # ── Callback panel admin ───────────────────────────────────────────────────
+    elif q.data == "admin_broadcast":
+        if q.from_user.id not in ADMIN_IDS:
+            await q.answer("⛔ Hanya admin!", show_alert=True)
+            return
+        text = (
+            f"<u><b>📣 BROADCAST</b></u>\n\n"
+            f"<blockquote>"
+            f"Kirim pesan broadcast ke seluruh pengguna bot.\n\n"
+            f"<b>Format perintah:</b>\n"
+            f"<code>/broadcast pesan kamu di sini</code>"
+            f"</blockquote>\n\n"
+            f"<u><b>💡 Contoh:</b></u>\n"
+            f"<code>/broadcast Halo semua! Ada update baru nih 🔥</code>"
+        )
+        await ctx.bot.send_message(cid, text, parse_mode=ParseMode.HTML, reply_markup=kb_admin())
+        return
+
+    elif q.data == "admin_limit":
+        if q.from_user.id not in ADMIN_IDS:
+            await q.answer("⛔ Hanya admin!", show_alert=True)
+            return
+        total = len(get_all_user_ids())
+        now   = datetime.now(timezone.utc).strftime("%d/%m/%Y %H:%M UTC")
+        text = (
+            f"<u><b>⏱️ LIMIT HARIAN</b></u>\n\n"
+            f"<blockquote>"
+            f"👥 <b>Total Pengguna Terdaftar</b>  »  <b>{total:,}</b>\n"
+            f"🕐 <b>Waktu Sekarang</b>             »  <b>{now}</b>\n\n"
+            f"ℹ️ Fitur limit harian per pengguna\n"
+            f"   sedang dalam pengembangan."
+            f"</blockquote>"
+        )
+        await ctx.bot.send_message(cid, text, parse_mode=ParseMode.HTML, reply_markup=kb_admin())
+        return
+
+    elif q.data == "admin_stats":
+        if q.from_user.id not in ADMIN_IDS:
+            await q.answer("⛔ Hanya admin!", show_alert=True)
+            return
+        total = len(get_all_user_ids())
+        now   = datetime.now(timezone.utc).strftime("%d/%m/%Y %H:%M UTC")
+        text = (
+            f"<u><b>📊 STATISTIK BOT</b></u>\n\n"
+            f"<blockquote>"
+            f"👥 <b>Total Pengguna</b>  »  <b>{total:,}</b>\n"
+            f"🕐 <b>Waktu Sekarang</b>  »  <b>{now}</b>"
+            f"</blockquote>"
+        )
+        await ctx.bot.send_message(cid, text, parse_mode=ParseMode.HTML, reply_markup=kb_admin())
+        return
+
     else:
         text = "❓ Perintah tidak dikenal."
-
-    await ctx.bot.send_message(cid, text, parse_mode=ParseMode.HTML, reply_markup=kb())
+        await ctx.bot.send_message(cid, text, parse_mode=ParseMode.HTML, reply_markup=kb())
+        return
 
 
 def main():
@@ -1168,6 +1271,7 @@ def main():
     log.info("🤖 Memulai CekID Bot...")
     app = ApplicationBuilder().token(BOT_TOKEN).post_init(on_startup).build()
     app.add_handler(CommandHandler("start",     cmd_start))
+    app.add_handler(CommandHandler("admin",     cmd_admin))
     app.add_handler(CommandHandler("stats",     cmd_stats))
     app.add_handler(CommandHandler("broadcast", cmd_broadcast))
     app.add_handler(CallbackQueryHandler(cmd_callback))
