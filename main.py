@@ -564,6 +564,17 @@ def estimate_date(user_id: int) -> str:
     return f"{d.day} {MONTHS_ID[d.month]} {d.year}"
 
 
+def dc_label(dc_id) -> str:
+    """Konversi dc_id integer → label lengkap dengan lokasi. '?' → 'Privat 🔒'."""
+    if dc_id is None:
+        return "Privat 🔒"
+    try:
+        n = int(dc_id)
+        return DC_MAP.get(n, f"DC{n}")
+    except (ValueError, TypeError):
+        return "Privat 🔒"
+
+
 def id_info(user_id: int) -> str:
     s = str(abs(user_id))
     return f"ID {s[0]}, {len(s)} digit"
@@ -633,7 +644,7 @@ async def fetch_user(identifier):
             "mention":    mention,
             "username":   username,
             "full_name":  fname,
-            "dc":         str(dc_id) if dc_id else "?",
+            "dc":         dc_label(dc_id),
             "premium":    getattr(user, "premium",    False) or False,
             "bot":        getattr(user, "bot",        False) or False,
             "scam":       getattr(user, "scam",       False) or False,
@@ -682,7 +693,7 @@ async def fetch_chat(identifier):
             return {
                 "type": "chat", "chat_id": chat_id, "title": title,
                 "username": username, "tipe": tipe,
-                "dc": str(dc_id) if dc_id else "?",
+                "dc": dc_label(dc_id),
                 "members": members, "desc": desc,
                 "scam": scam, "fake": fake, "verified": verified,
                 "restricted": restr, "noforwards": nofwd,
@@ -859,7 +870,7 @@ async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         cname, chex, cemoji = profile_color(uid)
 
         # Coba ambil info tambahan (DC, bio, foto) via Telethon — fallback jika gagal
-        dc_id = "?"
+        dc_id = dc_label(None)
         bio   = "-"
         photo = None
         try:
@@ -869,7 +880,7 @@ async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             full    = await cl(GetFullUserRequest(entity))
             tg_user = full.users[0]
             fu      = full.full_user
-            dc_id   = str(getattr(getattr(tg_user, "photo", None), "dc_id", None) or "?")
+            dc_id   = dc_label(getattr(getattr(tg_user, "photo", None), "dc_id", None))
             bio     = getattr(fu, "about", None) or "-"
             photo_buf = io.BytesIO()
             await cl.download_profile_photo(entity, file=photo_buf)
