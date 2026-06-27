@@ -830,6 +830,52 @@ def kb_admin() -> InlineKeyboardMarkup:
     ])
 
 
+def kb_admin_back() -> InlineKeyboardMarkup:
+    """Keyboard satu tombol kembali ke panel admin utama."""
+    return InlineKeyboardMarkup([
+        [StyledInlineKeyboardButton("🔙  Kembali ke Panel Admin", callback_data="admin_back", style="secondary")],
+    ])
+
+
+def _admin_panel_text(username: str, uid: int, dc_str: str, total_users: int, now: str) -> str:
+    """Bangun teks panel admin yang konsisten — dipakai di cmd_admin, cmd_start, dan admin_back."""
+    return (
+        f"<u><b>👑 PANEL ADMIN</b></u>\n\n"
+        f"<b>Hallo Sayang! Selamat datang di perintah admin 💕</b>\n\n"
+        f"<blockquote>"
+        f"👤 <b>Username</b>    »  <b>{html.escape(username)}</b>\n"
+        f"🆔 <b>ID</b>          »  <b><code>{uid}</code></b>\n"
+        f"💻 <b>DC Server</b>   »  <b>{html.escape(dc_str)}</b>\n"
+        f"👥 <b>Total User</b>  »  <b>{total_users:,}</b>\n"
+        f"🕐 <b>Waktu</b>       »  <b>{now}</b>"
+        f"</blockquote>\n\n"
+        f"<u><b>📋 Pilih perintah di bawah ini:</b></u>"
+    )
+
+
+async def _fetch_admin_panel_data(uid: int, ptb_user) -> tuple[str, str, int, str]:
+    """Return (username, dc_str, total_users, now) untuk panel admin."""
+    username    = f"@{ptb_user.username}" if ptb_user.username else ptb_user.full_name
+    total_users = len(get_all_user_ids())
+    now         = datetime.now(timezone.utc).strftime("%d/%m/%Y %H:%M UTC")
+    dc_str      = dc_label(None)
+    try:
+        cl      = await telethon_client()
+        entity  = await cl.get_entity(uid)
+        dc_raw  = getattr(getattr(entity, "photo", None), "dc_id", None)
+        dc_str  = dc_label(dc_raw)
+    except Exception:
+        pass
+    return username, dc_str, total_users, now
+
+
+_LOADING_TEXT = (
+    "⏳ <b>Hallo Sayang! Selamat datang di</b>\n"
+    "<b>Format Control Admin 👑</b>\n\n"
+    "<blockquote>🔄 Memuat panel admin, harap tunggu...</blockquote>"
+)
+
+
 async def send_user_card(chat_id: int, d: dict, ctx: ContextTypes.DEFAULT_TYPE, is_self: bool):
     card = generate_card(
         mention=d["mention"], user_id=str(d["uid"]), username=d["username"],
@@ -924,6 +970,19 @@ async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await msg.delete()
         await send_user_card(chat_id, d, ctx, is_self=True)
         log.info(f"✅ Kartu dikirim ke {uid}")
+
+        # Jika admin → kirim panel admin dengan loading animation
+        if uid in ADMIN_IDS:
+            admin_msg = await ctx.bot.send_message(
+                chat_id, _LOADING_TEXT, parse_mode=ParseMode.HTML,
+            )
+            await asyncio.sleep(1.5)
+            adm_username, adm_dc, adm_total, adm_now = await _fetch_admin_panel_data(uid, user)
+            await admin_msg.edit_text(
+                _admin_panel_text(adm_username, uid, adm_dc, adm_total, adm_now),
+                parse_mode=ParseMode.HTML, reply_markup=kb_admin(),
+            )
+
     except Exception as e:
         log.error(f"cmd_start error: {e}")
         try:
@@ -1006,36 +1065,14 @@ async def cmd_admin(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             "⛔ <b>Akses ditolak. Hanya admin!</b>", parse_mode=ParseMode.HTML
         )
         return
-
-    uid      = user.id
-    username = f"@{user.username}" if user.username else user.full_name
-
-    # Auto-detect DC admin via Telethon
-    dc_str = "Mendeteksi..."
-    try:
-        cl      = await telethon_client()
-        entity  = await cl.get_entity(uid)
-        dc_raw  = getattr(getattr(entity, "photo", None), "dc_id", None)
-        dc_str  = dc_label(dc_raw)
-    except Exception:
-        dc_str = dc_label(None)
-
-    total_users = len(get_all_user_ids())
-    now         = datetime.now(timezone.utc).strftime("%d/%m/%Y %H:%M UTC")
-
-    text = (
-        f"<u><b>👑 PANEL ADMIN</b></u>\n\n"
-        f"<b>Hallo Sayang! Selamat datang di perintah admin 💕</b>\n\n"
-        f"<blockquote>"
-        f"👤 <b>Username</b>    »  <b>{html.escape(username)}</b>\n"
-        f"🆔 <b>ID</b>          »  <b><code>{uid}</code></b>\n"
-        f"💻 <b>DC Server</b>   »  <b>{html.escape(dc_str)}</b>\n"
-        f"👥 <b>Total User</b>  »  <b>{total_users:,}</b>\n"
-        f"🕐 <b>Waktu</b>       »  <b>{now}</b>"
-        f"</blockquote>\n\n"
-        f"<u><b>📋 Pilih perintah di bawah ini:</b></u>"
+    msg = await update.message.reply_text(_LOADING_TEXT, parse_mode=ParseMode.HTML)
+    await asyncio.sleep(1.5)
+    uid = user.id
+    username, dc_str, total_users, now = await _fetch_admin_panel_data(uid, user)
+    await msg.edit_text(
+        _admin_panel_text(username, uid, dc_str, total_users, now),
+        parse_mode=ParseMode.HTML, reply_markup=kb_admin(),
     )
-    await update.message.reply_text(text, parse_mode=ParseMode.HTML, reply_markup=kb_admin())
 
 
 async def cmd_stats(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
@@ -1188,14 +1225,14 @@ async def cmd_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         text = (
             f"<u><b>📣 BROADCAST</b></u>\n\n"
             f"<blockquote>"
-            f"Kirim pesan broadcast ke seluruh pengguna bot.\n\n"
-            f"<b>Format perintah:</b>\n"
-            f"<code>/broadcast pesan kamu di sini</code>"
-            f"</blockquote>\n\n"
-            f"<u><b>💡 Contoh:</b></u>\n"
+            f"Kirim pesan ke <b>seluruh pengguna bot</b> sekaligus.\n\n"
+            f"📋 <b>Format perintah:</b>\n"
+            f"<code>/broadcast pesan kamu di sini</code>\n\n"
+            f"💡 <b>Contoh:</b>\n"
             f"<code>/broadcast Halo semua! Ada update baru nih 🔥</code>"
+            f"</blockquote>"
         )
-        await ctx.bot.send_message(cid, text, parse_mode=ParseMode.HTML, reply_markup=kb_admin())
+        await q.edit_message_text(text, parse_mode=ParseMode.HTML, reply_markup=kb_admin_back())
         return
 
     elif q.data == "admin_limit":
@@ -1209,11 +1246,11 @@ async def cmd_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             f"<blockquote>"
             f"👥 <b>Total Pengguna Terdaftar</b>  »  <b>{total:,}</b>\n"
             f"🕐 <b>Waktu Sekarang</b>             »  <b>{now}</b>\n\n"
-            f"ℹ️ Fitur limit harian per pengguna\n"
-            f"   sedang dalam pengembangan."
+            f"ℹ️ <b>Info:</b> Fitur limit harian per pengguna\n"
+            f"    sedang dalam pengembangan."
             f"</blockquote>"
         )
-        await ctx.bot.send_message(cid, text, parse_mode=ParseMode.HTML, reply_markup=kb_admin())
+        await q.edit_message_text(text, parse_mode=ParseMode.HTML, reply_markup=kb_admin_back())
         return
 
     elif q.data == "admin_stats":
@@ -1229,7 +1266,19 @@ async def cmd_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             f"🕐 <b>Waktu Sekarang</b>  »  <b>{now}</b>"
             f"</blockquote>"
         )
-        await ctx.bot.send_message(cid, text, parse_mode=ParseMode.HTML, reply_markup=kb_admin())
+        await q.edit_message_text(text, parse_mode=ParseMode.HTML, reply_markup=kb_admin_back())
+        return
+
+    elif q.data == "admin_back":
+        if q.from_user.id not in ADMIN_IDS:
+            await q.answer("⛔ Hanya admin!", show_alert=True)
+            return
+        uid  = q.from_user.id
+        adm_username, adm_dc, adm_total, adm_now = await _fetch_admin_panel_data(uid, q.from_user)
+        await q.edit_message_text(
+            _admin_panel_text(adm_username, uid, adm_dc, adm_total, adm_now),
+            parse_mode=ParseMode.HTML, reply_markup=kb_admin(),
+        )
         return
 
     else:
