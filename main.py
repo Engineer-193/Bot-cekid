@@ -810,7 +810,6 @@ def kb_admin() -> InlineKeyboardMarkup:
     """Keyboard panel admin — tiap button beda warna pakai style native PTB v22."""
     return InlineKeyboardMarkup([
         [InlineKeyboardButton("📣  BROADCAST",     callback_data="admin_broadcast", style="danger")],
-        [InlineKeyboardButton("⏱️  Limit Harian",  callback_data="admin_limit",     style="primary")],
         [InlineKeyboardButton("📊  Statistik Bot", callback_data="admin_stats",     style="success")],
     ])
 
@@ -1215,24 +1214,6 @@ async def cmd_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             f"<code>/broadcast pesan kamu di sini</code>\n\n"
             f"💡 <b>Contoh:</b>\n"
             f"<code>/broadcast Halo semua! Ada update baru nih 🔥</code>"
-            f"</blockquote>"
-        )
-        await q.edit_message_text(text, parse_mode=ParseMode.HTML, reply_markup=kb_admin_back())
-        return
-
-    elif q.data == "admin_limit":
-        if q.from_user.id not in ADMIN_IDS:
-            await q.answer("⛔ Hanya admin!", show_alert=True)
-            return
-        total = len(get_all_user_ids())
-        now   = datetime.now(timezone.utc).strftime("%d/%m/%Y %H:%M UTC")
-        text = (
-            f"<u><b>⏱️ LIMIT HARIAN</b></u>\n\n"
-            f"<blockquote>"
-            f"👥 <b>Total Pengguna Terdaftar</b>  »  <b>{total:,}</b>\n"
-            f"🕐 <b>Waktu Sekarang</b>             »  <b>{now}</b>\n\n"
-            f"ℹ️ <b>Info:</b> Fitur limit harian per pengguna\n"
-            f"    sedang dalam pengembangan."
             f"</blockquote>"
         )
         await q.edit_message_text(text, parse_mode=ParseMode.HTML, reply_markup=kb_admin_back())
