@@ -797,8 +797,8 @@ class StyledInlineKeyboardButton(InlineKeyboardButton):
         super().__init__(text, **kwargs)
         self._style = style
 
-    def to_dict(self) -> dict:
-        data = super().to_dict()
+    def to_dict(self, **kwargs) -> dict:
+        data = super().to_dict(**kwargs)
         if self._style:
             data["style"] = self._style
         return data
