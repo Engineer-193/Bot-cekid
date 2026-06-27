@@ -787,9 +787,26 @@ def caption_chat(d: dict) -> str:
     )
 
 
+class StyledInlineKeyboardButton(InlineKeyboardButton):
+    """InlineKeyboardButton dengan support Bot API 9.4+ style (danger/primary/etc).
+    PTB belum punya parameter style secara native, jadi kita override to_dict()
+    supaya field 'style' ikut dikirim ke Telegram API.
+    """
+
+    def __init__(self, text: str, style: str | None = None, **kwargs):
+        super().__init__(text, **kwargs)
+        self._style = style
+
+    def to_dict(self) -> dict:
+        data = super().to_dict()
+        if self._style:
+            data["style"] = self._style
+        return data
+
+
 def kb() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("🔴 JOIN STORE KAMI 🔴", url=STORE_LINK)],
+        [StyledInlineKeyboardButton(" JOIN STORE KAMI ", url=STORE_LINK, style="danger")],
     ])
 
 
