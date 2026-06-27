@@ -789,7 +789,7 @@ def caption_chat(d: dict) -> str:
 
 def kb() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("🏪 JOIN STORE KAMI", url=STORE_LINK)],
+        [InlineKeyboardButton("🔴 JOIN STORE KAMI 🔴", url=STORE_LINK)],
     ])
 
 
@@ -807,6 +807,22 @@ async def send_user_card(chat_id: int, d: dict, ctx: ContextTypes.DEFAULT_TYPE, 
     )
 
 
+def _err_msg(detail: str = "") -> str:
+    extra = f"\n\n<blockquote><b>🔍 Detail:</b> <code>{html.escape(str(detail)[:200])}</code></blockquote>" if detail else ""
+    return (
+        f"<b>{'─'*3} ❌ <u>GAGAL MENGAMBIL DATA</u> ❌ {'─'*3}</b>\n\n"
+        f"<blockquote>"
+        f"<b>⚠️ Terjadi kesalahan saat memproses permintaan.</b>\n\n"
+        f"<b>Kemungkinan penyebab:</b>\n"
+        f"<b>• Profil akun diset privat</b>\n"
+        f"<b>• Target tidak ditemukan</b>\n"
+        f"<b>• Koneksi Telethon terputus</b>"
+        f"</blockquote>"
+        f"{extra}\n\n"
+        f"<b>🔄 Silakan coba lagi dengan ketik /start</b>"
+    )
+
+
 async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     user    = update.effective_user
     chat_id = update.effective_chat.id
@@ -814,8 +830,8 @@ async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
     msg = await ctx.bot.send_message(
         chat_id,
-        f"─── {E_HOURGLASS} <b><u>MEMPROSES DATA</u></b> {E_HOURGLASS} ───\n\n"
-        f"<blockquote>──── {E_CLOCK} Memproses profil Anda, mohon tunggu...</blockquote>",
+        f"<b>{'─'*3} {E_HOURGLASS} <u>MEMPROSES DATA</u> {E_HOURGLASS} {'─'*3}</b>\n\n"
+        f"<blockquote><b>{'─'*4} {E_CLOCK} Sedang memproses profil Anda, mohon tunggu...</b></blockquote>",
         parse_mode=ParseMode.HTML,
     )
     try:
@@ -825,20 +841,19 @@ async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         mention  = f"@{user.username}" if user.username else fname
         cname, chex, cemoji = profile_color(uid)
 
-        # Coba ambil info tambahan (DC, bio, foto) via Telethon jika bisa
-        dc_id   = "?"
-        bio     = "-"
-        photo   = None
+        # Coba ambil info tambahan (DC, bio, foto) via Telethon — fallback jika gagal
+        dc_id = "?"
+        bio   = "-"
+        photo = None
         try:
-            cl     = await telethon_client()
-            # Gunakan username jika ada, lebih reliable dari numeric ID
-            lookup = f"@{user.username}" if user.username else user.id
-            entity = await cl.get_entity(lookup)
-            full   = await cl(GetFullUserRequest(entity))
+            cl      = await telethon_client()
+            lookup  = f"@{user.username}" if user.username else user.id
+            entity  = await cl.get_entity(lookup)
+            full    = await cl(GetFullUserRequest(entity))
             tg_user = full.users[0]
             fu      = full.full_user
-            dc_id  = str(getattr(getattr(tg_user, "photo", None), "dc_id", None) or "?")
-            bio    = getattr(fu, "about", None) or "-"
+            dc_id   = str(getattr(getattr(tg_user, "photo", None), "dc_id", None) or "?")
+            bio     = getattr(fu, "about", None) or "-"
             photo_buf = io.BytesIO()
             await cl.download_profile_photo(entity, file=photo_buf)
             photo_buf.seek(0)
@@ -878,7 +893,9 @@ async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             await msg.delete()
         except Exception:
             pass
-        await ctx.bot.send_message(chat_id, f"❌ Error: {e}")
+        await ctx.bot.send_message(
+            chat_id, _err_msg(str(e)), parse_mode=ParseMode.HTML
+        )
 
 
 async def cmd_msg(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
@@ -901,8 +918,8 @@ async def cmd_msg(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         return
 
     msg = await update.message.reply_text(
-        f"─── {E_HOURGLASS} <b><u>MEMPROSES DATA</u></b> {E_HOURGLASS} ───\n\n"
-        f"<blockquote>──── {E_CLOCK} Memproses informasi target, mohon tunggu...</blockquote>",
+        f"<b>{'─'*3} {E_HOURGLASS} <u>MEMPROSES DATA</u> {E_HOURGLASS} {'─'*3}</b>\n\n"
+        f"<blockquote><b>{'─'*4} {E_CLOCK} Sedang memproses informasi target, mohon tunggu...</b></blockquote>",
         parse_mode=ParseMode.HTML,
     )
     try:
@@ -913,26 +930,34 @@ async def cmd_msg(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         if isinstance(entity, User):
             d = await fetch_user(identifier)
             if not d:
-                await update.message.reply_text("❌ Pengguna tidak ditemukan atau tidak bisa diakses.")
+                await update.message.reply_text(
+                    _err_msg("Pengguna tidak ditemukan atau tidak bisa diakses."),
+                    parse_mode=ParseMode.HTML,
+                )
                 return
             await send_user_card(chat_id, d, ctx, is_self=False)
 
         elif isinstance(entity, (Channel, Chat)):
             d = await fetch_chat(identifier)
             if not d:
-                await update.message.reply_text("❌ Chat tidak ditemukan atau tidak bisa diakses.")
+                await update.message.reply_text(
+                    _err_msg("Chat tidak ditemukan atau tidak bisa diakses."),
+                    parse_mode=ParseMode.HTML,
+                )
                 return
             await ctx.bot.send_message(
                 chat_id=chat_id, text=caption_chat(d),
                 parse_mode=ParseMode.HTML, reply_markup=kb(),
             )
         else:
-            await update.message.reply_text("❌ Tipe tidak dikenali.")
+            await update.message.reply_text(
+                _err_msg("Tipe entitas tidak dikenali."), parse_mode=ParseMode.HTML
+            )
 
     except Exception as e:
         log.error(f"cmd_msg error: {e}")
         try:
-            await msg.edit_text("❌ Pengguna tidak ditemukan atau tidak bisa diakses.")
+            await msg.edit_text(_err_msg(str(e)), parse_mode=ParseMode.HTML)
         except Exception:
             pass
 
@@ -1016,13 +1041,20 @@ async def on_startup(app):
 #  ENTRY POINT
 # ══════════════════════════════════════════════════════════════════════════════
 
-def main():
-    # Mode gen session
-    if "--gensession" in sys.argv:
-        asyncio.run(_run_gensession())
-        return
+def _read_session_from_env() -> str:
+    """Baca TELETHON_SESSION langsung dari file .env (hindari truncation)."""
+    env_path = ENV_FILE
+    if env_path.exists():
+        for line in env_path.read_text(encoding="utf-8").splitlines():
+            if line.startswith("TELETHON_SESSION="):
+                val = line.split("=", 1)[1].strip()
+                if val:
+                    return val
+    return ""
 
-    # Validasi
+
+def main():
+    # ── Validasi wajib ──────────────────────────────────────────────────────────
     if not BOT_TOKEN:
         print("\n❌ BOT_TOKEN belum diisi di .env!\n")
         sys.exit(1)
@@ -1030,12 +1062,18 @@ def main():
         print("\n❌ TELETHON_API_ID / TELETHON_API_HASH belum diisi di .env!\n")
         sys.exit(1)
 
-    sess = os.environ.get("TELETHON_SESSION", TELETHON_SESSION)
-    if not sess:
-        print("\n⚠️  TELETHON_SESSION kosong!")
-        print("   Jalankan dulu: python3 main.py --gensession")
-        print("   Lalu salin session string ke .env\n")
-        sys.exit(1)
+    # ── Cek session — auto jalankan gensession jika belum ada ──────────────────
+    if "--gensession" in sys.argv or not _read_session_from_env():
+        if not _read_session_from_env():
+            print("\n" + "═" * 55)
+            print("  ⚠️  TELETHON SESSION BELUM ADA")
+            print("  Memulai proses generate session otomatis...")
+            print("═" * 55 + "\n")
+        asyncio.run(_run_gensession())
+        if "--gensession" in sys.argv:
+            return
+        # Lanjut jalankan bot setelah session berhasil dibuat
+        print("\n▶️  Session tersimpan. Memulai bot...\n")
 
     log.info("🤖 Memulai CekID Bot...")
     app = ApplicationBuilder().token(BOT_TOKEN).post_init(on_startup).build()
