@@ -549,6 +549,148 @@ E_BELL      = ce("6271271702408204490", "🔔")
 E_HOURGLASS = ce("4909244268977062445", "⏳")
 E_CLOCK     = ce("4909244268977062445", "⏳")
 
+# ── Premium emoji — HTML-to-MessageEntity converter ───────────────────────────
+# Telegram Bot API mendukung custom emoji via MessageEntity(type='custom_emoji').
+# Cara paling andal adalah PARSE HTML sendiri → kirim text + entities eksplisit
+# (tanpa parse_mode), sehingga tidak bergantung pada HTML parser Telegram
+# yang kadang reject <tg-emoji> tergantung versi API / bot token.
+
+import html.parser as _html_parser
+from telegram import MessageEntity
+
+
+def _utf16_len(s: str) -> int:
+    """Panjang string dalam UTF-16 code units (yang dipakai Telegram untuk offset)."""
+    return len(s.encode("utf-16-le")) // 2
+
+
+class _TelegramHTMLParser(_html_parser.HTMLParser):
+    """Parse Telegram HTML (termasuk <tg-emoji>) → plain text + list MessageEntity."""
+
+    _TAG_TYPE = {
+        "b": "bold", "strong": "bold",
+        "i": "italic", "em": "italic",
+        "u": "underline",
+        "s": "strikethrough", "strike": "strikethrough", "del": "strikethrough",
+        "code": "code",
+        "pre": "pre",
+        "tg-spoiler": "spoiler",
+        "blockquote": "blockquote",
+    }
+
+    def __init__(self):
+        super().__init__(convert_charrefs=False)
+        self._parts: list[str] = []
+        self._entities: list[MessageEntity] = []
+        self._stack: list[tuple[str, dict, int]] = []   # (tag, attrs, utf16_start)
+        self._utf16_pos: int = 0
+
+    def handle_starttag(self, tag: str, attrs):
+        self._stack.append((tag, dict(attrs), self._utf16_pos))
+
+    def handle_endtag(self, tag: str):
+        for i in range(len(self._stack) - 1, -1, -1):
+            if self._stack[i][0] == tag:
+                open_tag, attrs_dict, start = self._stack.pop(i)
+                length = self._utf16_pos - start
+                if length <= 0:
+                    break
+
+                etype = self._TAG_TYPE.get(tag)
+                ekw: dict = {}
+
+                if etype:
+                    pass
+                elif tag == "a":
+                    etype = "text_link"
+                    ekw["url"] = attrs_dict.get("href", "")
+                elif tag == "tg-emoji":
+                    etype = "custom_emoji"
+                    ekw["custom_emoji_id"] = attrs_dict.get("emoji-id", "")
+
+                if etype:
+                    self._entities.append(
+                        MessageEntity(type=etype, offset=start, length=length, **ekw)
+                    )
+                break
+
+    def handle_data(self, data: str):
+        self._parts.append(data)
+        self._utf16_pos += _utf16_len(data)
+
+    def handle_entityref(self, name: str):
+        char = {"amp": "&", "lt": "<", "gt": ">", "quot": '"', "apos": "'"}.get(name, f"&{name};")
+        self._parts.append(char)
+        self._utf16_pos += _utf16_len(char)
+
+    def handle_charref(self, name: str):
+        char = chr(int(name[1:], 16) if name.startswith("x") else int(name))
+        self._parts.append(char)
+        self._utf16_pos += _utf16_len(char)
+
+    def result(self) -> tuple[str, list[MessageEntity]]:
+        return "".join(self._parts), self._entities
+
+
+def _html_to_entities(html_text: str) -> tuple[str, list[MessageEntity]]:
+    """Konversi HTML Telegram (dengan <tg-emoji>) ke (plain_text, [MessageEntity])."""
+    p = _TelegramHTMLParser()
+    p.feed(html_text)
+    return p.result()
+
+
+async def safe_send_message(bot, *, chat_id, text, parse_mode=None, reply_markup=None, **kwargs):
+    """Kirim pesan: jika ada <tg-emoji>, parse HTML sendiri → entities eksplisit."""
+    if parse_mode == ParseMode.HTML and "<tg-emoji" in text:
+        try:
+            plain, entities = _html_to_entities(text)
+            return await bot.send_message(
+                chat_id=chat_id, text=plain, entities=entities,
+                reply_markup=reply_markup, **kwargs,
+            )
+        except Exception as e:
+            log.warning(f"Entity-send gagal ({e}), coba HTML biasa...")
+
+    return await bot.send_message(
+        chat_id=chat_id, text=text, parse_mode=parse_mode,
+        reply_markup=reply_markup, **kwargs,
+    )
+
+
+async def safe_send_photo(bot, *, chat_id, photo, caption=None, parse_mode=None, reply_markup=None, **kwargs):
+    """Kirim foto: caption dengan <tg-emoji> di-parse ke entities eksplisit."""
+    if caption and parse_mode == ParseMode.HTML and "<tg-emoji" in caption:
+        try:
+            plain, entities = _html_to_entities(caption)
+            return await bot.send_photo(
+                chat_id=chat_id, photo=photo, caption=plain, caption_entities=entities,
+                reply_markup=reply_markup, **kwargs,
+            )
+        except Exception as e:
+            log.warning(f"Entity-photo gagal ({e}), coba HTML biasa...")
+
+    return await bot.send_photo(
+        chat_id=chat_id, photo=photo, caption=caption,
+        parse_mode=parse_mode, reply_markup=reply_markup, **kwargs,
+    )
+
+
+async def safe_edit_text(msg, *, text, parse_mode=None, reply_markup=None, **kwargs):
+    """Edit pesan: <tg-emoji> di-parse ke entities eksplisit."""
+    if parse_mode == ParseMode.HTML and "<tg-emoji" in text:
+        try:
+            plain, entities = _html_to_entities(text)
+            return await msg.edit_text(
+                text=plain, entities=entities,
+                reply_markup=reply_markup, **kwargs,
+            )
+        except Exception as e:
+            log.warning(f"Entity-edit gagal ({e}), coba HTML biasa...")
+
+    return await msg.edit_text(
+        text=text, parse_mode=parse_mode, reply_markup=reply_markup, **kwargs,
+    )
+
 
 def estimate_date(user_id: int) -> str:
     uid   = abs(int(user_id))
@@ -802,22 +944,22 @@ def caption_chat(d: dict) -> str:
 
 def kb() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton(" JOIN STORE KAMI ", url=STORE_LINK, style="danger")],
+        [InlineKeyboardButton(" JOIN STORE KAMI ", url=STORE_LINK)],
     ])
 
 
 def kb_admin() -> InlineKeyboardMarkup:
     """Keyboard panel admin — tiap button beda warna pakai style native PTB v22."""
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("📣  BROADCAST",     callback_data="admin_broadcast", style="danger")],
-        [InlineKeyboardButton("📊  Statistik Bot", callback_data="admin_stats",     style="success")],
+        [InlineKeyboardButton("📣  BROADCAST",     callback_data="admin_broadcast")],
+        [InlineKeyboardButton("📊  Statistik Bot", callback_data="admin_stats")],
     ])
 
 
 def kb_admin_back() -> InlineKeyboardMarkup:
     """Keyboard satu tombol kembali ke panel admin utama."""
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("🔙  Kembali ke Panel Admin", callback_data="admin_back", style="primary")],
+        [InlineKeyboardButton("🔙  Kembali ke Panel Admin", callback_data="admin_back")],
     ])
 
 
@@ -868,8 +1010,8 @@ async def send_user_card(chat_id: int, d: dict, ctx: ContextTypes.DEFAULT_TYPE, 
         avatar_bytes=d["photo"],
     )
     await ctx.bot.send_photo(chat_id=chat_id, photo=io.BytesIO(card))
-    await ctx.bot.send_message(
-        chat_id=chat_id, text=caption_user(d, is_self),
+    await safe_send_message(
+        ctx.bot, chat_id=chat_id, text=caption_user(d, is_self),
         parse_mode=ParseMode.HTML, reply_markup=kb(),
     )
 
@@ -895,10 +1037,13 @@ async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     log.info(f"/start dari {user.id} (@{user.username or '-'})")
 
-    msg = await ctx.bot.send_message(
-        chat_id,
-        f"<b>{'─'*3} {E_HOURGLASS} <u>MEMPROSES DATA</u> {E_HOURGLASS} {'─'*3}</b>\n\n"
-        f"<blockquote><b>{'─'*4} {E_CLOCK} Sedang memproses profil Anda, mohon tunggu...</b></blockquote>",
+    msg = await safe_send_message(
+        ctx.bot,
+        chat_id=chat_id,
+        text=(
+            f"<b>{'─'*3} {E_HOURGLASS} <u>MEMPROSES DATA</u> {E_HOURGLASS} {'─'*3}</b>\n\n"
+            f"<blockquote><b>{'─'*4} {E_CLOCK} Sedang memproses profil Anda, mohon tunggu...</b></blockquote>"
+        ),
         parse_mode=ParseMode.HTML,
     )
     try:
@@ -997,11 +1142,14 @@ async def cmd_msg(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     else:
         return
 
-    msg = await update.message.reply_text(
+    _loading_text = (
         f"<b>{'─'*3} {E_HOURGLASS} <u>MEMPROSES DATA</u> {E_HOURGLASS} {'─'*3}</b>\n\n"
-        f"<blockquote><b>{'─'*4} {E_CLOCK} Sedang memproses informasi target, mohon tunggu...</b></blockquote>",
-        parse_mode=ParseMode.HTML,
+        f"<blockquote><b>{'─'*4} {E_CLOCK} Sedang memproses informasi target, mohon tunggu...</b></blockquote>"
     )
+    try:
+        msg = await update.message.reply_text(_loading_text, parse_mode=ParseMode.HTML)
+    except Exception:
+        msg = await update.message.reply_text(strip_tgemoji(_loading_text), parse_mode=ParseMode.HTML)
     try:
         cl     = await telethon_client()
         entity = await cl.get_entity(identifier)
@@ -1025,8 +1173,8 @@ async def cmd_msg(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
                     parse_mode=ParseMode.HTML,
                 )
                 return
-            await ctx.bot.send_message(
-                chat_id=chat_id, text=caption_chat(d),
+            await safe_send_message(
+                ctx.bot, chat_id=chat_id, text=caption_chat(d),
                 parse_mode=ParseMode.HTML, reply_markup=kb(),
             )
         else:
@@ -1037,7 +1185,7 @@ async def cmd_msg(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         log.error(f"cmd_msg error: {e}")
         try:
-            await msg.edit_text(_err_msg(str(e)), parse_mode=ParseMode.HTML)
+            await safe_edit_text(msg, text=_err_msg(str(e)), parse_mode=ParseMode.HTML)
         except Exception:
             pass
 
