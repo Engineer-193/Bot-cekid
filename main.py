@@ -639,17 +639,44 @@ def _html_to_entities(html_text: str) -> tuple[str, list[MessageEntity]]:
     return p.result()
 
 
+def _strip_tgemoji(text: str) -> str:
+    """Hapus <tg-emoji> tag, sisakan fallback emoji biasa. Formatting HTML lain tetap."""
+    return re.sub(r'<tg-emoji[^>]*>(.*?)</tg-emoji>', r'\1', text, flags=re.DOTALL)
+
+
 async def safe_send_message(bot, *, chat_id, text, parse_mode=None, reply_markup=None, **kwargs):
-    """Kirim pesan: jika ada <tg-emoji>, parse HTML sendiri → entities eksplisit."""
+    """
+    3-lapisan fallback untuk pesan yang mengandung <tg-emoji>:
+      1. Entity-based (HTML parser kita sendiri → MessageEntity eksplisit)
+      2. HTML biasa dengan <tg-emoji> (Telegram parse sendiri)
+      3. Strip <tg-emoji>, kirim dengan emoji Unicode biasa
+    """
     if parse_mode == ParseMode.HTML and "<tg-emoji" in text:
+        # Lapisan 1: entity eksplisit
         try:
             plain, entities = _html_to_entities(text)
             return await bot.send_message(
                 chat_id=chat_id, text=plain, entities=entities,
                 reply_markup=reply_markup, **kwargs,
             )
-        except Exception as e:
-            log.warning(f"Entity-send gagal ({e}), coba HTML biasa...")
+        except Exception as e1:
+            log.warning(f"[emoji] Entity-send gagal ({e1}), coba HTML…")
+
+        # Lapisan 2: HTML biasa
+        try:
+            return await bot.send_message(
+                chat_id=chat_id, text=text, parse_mode=parse_mode,
+                reply_markup=reply_markup, **kwargs,
+            )
+        except Exception as e2:
+            log.warning(f"[emoji] HTML-send gagal ({e2}), fallback plain emoji…")
+
+        # Lapisan 3: strip <tg-emoji>, pakai Unicode fallback
+        stripped = _strip_tgemoji(text)
+        return await bot.send_message(
+            chat_id=chat_id, text=stripped, parse_mode=parse_mode,
+            reply_markup=reply_markup, **kwargs,
+        )
 
     return await bot.send_message(
         chat_id=chat_id, text=text, parse_mode=parse_mode,
@@ -658,7 +685,7 @@ async def safe_send_message(bot, *, chat_id, text, parse_mode=None, reply_markup
 
 
 async def safe_send_photo(bot, *, chat_id, photo, caption=None, parse_mode=None, reply_markup=None, **kwargs):
-    """Kirim foto: caption dengan <tg-emoji> di-parse ke entities eksplisit."""
+    """3-lapisan fallback untuk caption foto yang mengandung <tg-emoji>."""
     if caption and parse_mode == ParseMode.HTML and "<tg-emoji" in caption:
         try:
             plain, entities = _html_to_entities(caption)
@@ -666,8 +693,22 @@ async def safe_send_photo(bot, *, chat_id, photo, caption=None, parse_mode=None,
                 chat_id=chat_id, photo=photo, caption=plain, caption_entities=entities,
                 reply_markup=reply_markup, **kwargs,
             )
-        except Exception as e:
-            log.warning(f"Entity-photo gagal ({e}), coba HTML biasa...")
+        except Exception as e1:
+            log.warning(f"[emoji] Entity-photo gagal ({e1}), coba HTML…")
+
+        try:
+            return await bot.send_photo(
+                chat_id=chat_id, photo=photo, caption=caption,
+                parse_mode=parse_mode, reply_markup=reply_markup, **kwargs,
+            )
+        except Exception as e2:
+            log.warning(f"[emoji] HTML-photo gagal ({e2}), fallback plain emoji…")
+
+        stripped = _strip_tgemoji(caption)
+        return await bot.send_photo(
+            chat_id=chat_id, photo=photo, caption=stripped,
+            parse_mode=parse_mode, reply_markup=reply_markup, **kwargs,
+        )
 
     return await bot.send_photo(
         chat_id=chat_id, photo=photo, caption=caption,
@@ -676,7 +717,7 @@ async def safe_send_photo(bot, *, chat_id, photo, caption=None, parse_mode=None,
 
 
 async def safe_edit_text(msg, *, text, parse_mode=None, reply_markup=None, **kwargs):
-    """Edit pesan: <tg-emoji> di-parse ke entities eksplisit."""
+    """3-lapisan fallback untuk edit pesan yang mengandung <tg-emoji>."""
     if parse_mode == ParseMode.HTML and "<tg-emoji" in text:
         try:
             plain, entities = _html_to_entities(text)
@@ -684,8 +725,22 @@ async def safe_edit_text(msg, *, text, parse_mode=None, reply_markup=None, **kwa
                 text=plain, entities=entities,
                 reply_markup=reply_markup, **kwargs,
             )
-        except Exception as e:
-            log.warning(f"Entity-edit gagal ({e}), coba HTML biasa...")
+        except Exception as e1:
+            log.warning(f"[emoji] Entity-edit gagal ({e1}), coba HTML…")
+
+        try:
+            return await msg.edit_text(
+                text=text, parse_mode=parse_mode,
+                reply_markup=reply_markup, **kwargs,
+            )
+        except Exception as e2:
+            log.warning(f"[emoji] HTML-edit gagal ({e2}), fallback plain emoji…")
+
+        stripped = _strip_tgemoji(text)
+        return await msg.edit_text(
+            text=stripped, parse_mode=parse_mode,
+            reply_markup=reply_markup, **kwargs,
+        )
 
     return await msg.edit_text(
         text=text, parse_mode=parse_mode, reply_markup=reply_markup, **kwargs,
