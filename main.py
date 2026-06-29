@@ -56,7 +56,7 @@ try:
 except ImportError:
     pass
 
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
@@ -527,27 +527,27 @@ E_MENTION   = ce("5852636219250317264", "⭐")   # star
 E_ID        = ce("5969696910112463071", "🪪")   # ID card
 E_USERNAME  = ce("5447410659077661506", "🌐")   # globe
 E_DC        = ce("6003735582495216112", "📡")   # telegram/signal
-E_PREMIUM   = ce("5348136664738839786", "💎")   # special/premium
+E_PREMIUM   = ce("5861637182212543018", "💎")   # purple premium
 E_DATE      = ce("5413879192267805083", "📅")   # calendar
 E_COLOR     = ce("5395444784611480792", "🎨")   # pencil/color
 E_BOT       = ce("5188481279963715781", "🚀")   # rocket
-E_SCAM      = ce("5424972470023104089", "🚫")   # fire/danger
-E_RESTRICT  = ce("5424972470023104089", "🛡")   # fire/danger
-E_VERIFIED  = ce("5852636219250317264", "✅")   # star
-E_BIO       = ce("5395444784611480792", "📋")   # pencil
-E_LASTSEEN  = ce("5413879192267805083", "⏳")   # calendar
+E_SCAM      = ce("5420323339723881652", "🚫")   # warning/danger
+E_RESTRICT  = ce("5420323339723881652", "🛡")   # warning/danger
+E_VERIFIED  = ce("5251203410396458957", "✅")   # blue shield checkmark
+E_BIO       = ce("5282843764451195532", "📋")   # clipboard
+E_LASTSEEN  = ce("5461174173835489008", "⏳")   # clock
 E_CHATID    = ce("5969696910112463071", "🪪")   # ID card
 E_TITLE     = ce("5852636219250317264", "⭐")   # star
-E_TYPE      = ce("5424972470023104089", "🔴")   # fire
-E_FAKE      = ce("5424972470023104089", "🚫")   # fire/danger
-E_NOFORWARD = ce("5348136664738839786", "🛡")   # special
+E_TYPE      = ce("5918075981649679952", "🔴")   # red dot
+E_FAKE      = ce("5420323339723881652", "🚫")   # warning/danger
+E_NOFORWARD = ce("5420323339723881652", "🛡")   # warning
 E_MEMBERS   = ce("5348136664738839786", "👥")   # special
-E_DESC      = ce("5395444784611480792", "📋")   # pencil
-E_INFO      = ce("6003735582495216112", "ℹ️")   # telegram/info
+E_DESC      = ce("5282843764451195532", "📋")   # clipboard
+E_INFO      = ce("5258474669769497337", "ℹ️")   # info circle
 E_ROCKET    = ce("5188481279963715781", "🚀")   # rocket
 E_BELL      = ce("6271271702408204490", "🔔")   # bell
-E_HOURGLASS = ce("5413879192267805083", "⏳")   # calendar
-E_CLOCK     = ce("5413879192267805083", "⏳")   # calendar
+E_HOURGLASS = ce("5461174173835489008", "⏳")   # clock
+E_CLOCK     = ce("5461174173835489008", "⏳")   # clock
 
 # ── Premium emoji — HTML-to-MessageEntity converter ───────────────────────────
 # Telegram Bot API mendukung custom emoji via MessageEntity(type='custom_emoji').
@@ -1038,7 +1038,7 @@ async def _fetch_admin_panel_data(uid: int, ptb_user) -> tuple[str, str, int, st
     """Return (username, dc_str, total_users, now) untuk panel admin."""
     username    = f"@{ptb_user.username}" if ptb_user.username else ptb_user.full_name
     total_users = len(get_all_user_ids())
-    now         = datetime.now(timezone.utc).strftime("%d/%m/%Y %H:%M UTC")
+    now         = datetime.now(timezone(timedelta(hours=8))).strftime("%d/%m/%Y %H:%M WITA")
     dc_str      = dc_label(None)
     try:
         cl      = await telethon_client()
@@ -1268,7 +1268,7 @@ async def cmd_stats(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("⛔ <b>Akses ditolak. Hanya admin!</b>", parse_mode=ParseMode.HTML)
         return
     total = len(get_all_user_ids())
-    now   = datetime.now(timezone.utc).strftime("%d/%m/%Y %H:%M UTC")
+    now   = datetime.now(timezone(timedelta(hours=8))).strftime("%d/%m/%Y %H:%M WITA")
     await update.message.reply_text(
         f"<u><b>📊 STATISTIK BOT</b></u>\n\n"
         f"<blockquote>"
@@ -1427,7 +1427,7 @@ async def cmd_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             await q.answer("⛔ Hanya admin!", show_alert=True)
             return
         total = len(get_all_user_ids())
-        now   = datetime.now(timezone.utc).strftime("%d/%m/%Y %H:%M UTC")
+        now   = datetime.now(timezone(timedelta(hours=8))).strftime("%d/%m/%Y %H:%M WITA")
         text = (
             f"<u><b>📊 STATISTIK BOT</b></u>\n\n"
             f"<blockquote>"
