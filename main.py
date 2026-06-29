@@ -1,14 +1,12 @@
 # ══════════════════════════════════════════════════════════════════════════════
 #  CekID Bot — main.py (all-in-one, Pterodactyl ready)
-#  Berisi: card generator + gen session + bot utama
+#  Versi: 2.0 — colored buttons, sessions via bot, estimasi real-time
 #
-#  Cara pakai di Pterodactyl:
+#  Setup di Pterodactyl:
 #    1. Upload 4 file: main.py, config.py, requirements.txt, .env
-#    2. Isi .env dengan BOT_TOKEN, TELETHON_API_ID, TELETHON_API_HASH
-#    3. Di console Pterodactyl ketik:  python3 main.py --gensession
-#       Ikuti instruksi → masukkan nomor HP & OTP
-#       Salin TELETHON_SESSION ke file .env
-#    4. Klik Start / jalankan bot normal
+#    2. Isi .env dengan BOT_TOKEN saja
+#    3. Klik Start — bot aktif
+#    4. /admin → tombol 🟢 Sessions → ikuti alur setup API ID/Hash/OTP
 # ══════════════════════════════════════════════════════════════════════════════
 
 import sys
@@ -19,11 +17,10 @@ import math
 import logging
 import asyncio
 import html
-import getpass
 import re
 import random
 
-# ── auto-install dependencies jika belum ada ──────────────────────────────────
+# ── auto-install dependencies ─────────────────────────────────────────────────
 def _ensure_deps():
     import subprocess
     pkgs = [
@@ -85,19 +82,20 @@ from telethon.tl.types import (
 # ── import config ─────────────────────────────────────────────────────────────
 try:
     from config import (
-        BOT_TOKEN, TELETHON_API_ID, TELETHON_API_HASH, TELETHON_SESSION,
-        STORE_LINK, DC_MAP, PROFILE_COLORS, KNOWN_IDS, MONTHS_ID, ADMIN_IDS,
+        BOT_TOKEN, STORE_LINK, DC_MAP, PROFILE_COLORS, KNOWN_IDS, MONTHS_ID, ADMIN_IDS,
     )
 except ImportError:
-    # fallback inline jika config.py tidak ada
-    BOT_TOKEN         = os.environ.get("BOT_TOKEN", "")
-    TELETHON_API_ID   = int(os.environ.get("TELETHON_API_ID", "0") or "0")
-    TELETHON_API_HASH = os.environ.get("TELETHON_API_HASH", "")
-    TELETHON_SESSION  = os.environ.get("TELETHON_SESSION", "")
-    STORE_LINK        = "https://t.me/botallz"
-    ADMIN_IDS         = []
-    DC_MAP            = {1: "1", 2: "2", 3: "3", 4: "4", 5: "5"}
-    PROFILE_COLORS    = {
+    BOT_TOKEN  = os.environ.get("BOT_TOKEN", "")
+    STORE_LINK = "https://t.me/botallz"
+    ADMIN_IDS  = []
+    DC_MAP     = {
+        1: "DC1 🇺🇸 Virginia, USA",
+        2: "DC2 🇳🇱 Amsterdam, Belanda",
+        3: "DC3 🇺🇸 Miami, USA",
+        4: "DC4 🇳🇱 Amsterdam, Belanda",
+        5: "DC5 🇸🇬 Singapura",
+    }
+    PROFILE_COLORS = {
         0: ("Merah",  "#FF5951", "❤️"),
         1: ("Oranye", "#E87D3E", "🧡"),
         2: ("Ungu",   "#A479CB", "💜"),
@@ -108,18 +106,21 @@ except ImportError:
     }
     KNOWN_IDS = [
         (1,              "2013-08-01"),
-        (100_000_000,    "2014-01-01"),
-        (500_000_000,    "2017-01-01"),
-        (1_000_000_000,  "2019-01-01"),
-        (2_000_000_000,  "2020-06-01"),
-        (3_000_000_000,  "2021-01-01"),
-        (4_000_000_000,  "2021-07-01"),
+        (100_000_000,    "2014-04-01"),
+        (500_000_000,    "2016-06-01"),
+        (1_000_000_000,  "2018-06-01"),
+        (2_000_000_000,  "2020-04-01"),
+        (3_000_000_000,  "2021-01-15"),
+        (4_000_000_000,  "2021-06-01"),
         (5_000_000_000,  "2022-01-01"),
-        (6_000_000_000,  "2022-07-01"),
-        (7_000_000_000,  "2023-01-01"),
-        (8_000_000_000,  "2023-06-01"),
-        (9_000_000_000,  "2024-01-01"),
-        (10_000_000_000, "2024-07-01"),
+        (6_000_000_000,  "2022-09-01"),
+        (7_000_000_000,  "2023-04-01"),
+        (8_000_000_000,  "2023-11-01"),
+        (9_000_000_000,  "2024-04-01"),
+        (10_000_000_000, "2024-11-01"),
+        (11_000_000_000, "2025-06-01"),
+        (12_000_000_000, "2026-01-01"),
+        (12_857_000_000, "2026-06-29"),
     ]
     MONTHS_ID = [
         "", "Januari", "Februari", "Maret", "April", "Mei", "Juni",
@@ -133,12 +134,69 @@ logging.basicConfig(
 )
 log = logging.getLogger(__name__)
 
-ENV_FILE   = Path(__file__).parent / ".env"
-USERS_FILE = Path(__file__).parent / "users.json"
+ENV_FILE      = Path(__file__).parent / ".env"
+USERS_FILE    = Path(__file__).parent / "users.json"
+SESSIONS_FILE = Path(__file__).parent / "sessions.json"
 _client: TelegramClient | None = None
 
+# ── Session setup state machine ───────────────────────────────────────────────
+# State per admin_id: {"state": str, "api_id": int, "api_hash": str,
+#                      "phone": str, "pclient": TelegramClient,
+#                      "phone_code_hash": str, "chat_id": int, "msg_id": int}
+_SESSION_SETUP: dict[int, dict] = {}
 
-# ── User tracking ─────────────────────────────────────────────────────────────
+SS_API_ID  = "waiting_api_id"
+SS_API_HASH = "waiting_api_hash"
+SS_PHONE   = "waiting_phone"
+SS_OTP     = "waiting_otp"
+SS_2FA     = "waiting_2fa"
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  SESSIONS CONFIG (file-based, bukan env)
+# ══════════════════════════════════════════════════════════════════════════════
+
+def _load_sessions() -> dict:
+    if SESSIONS_FILE.exists():
+        try:
+            return json.loads(SESSIONS_FILE.read_text(encoding="utf-8"))
+        except Exception:
+            pass
+    return {}
+
+
+def _save_sessions(data: dict):
+    SESSIONS_FILE.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def is_session_configured() -> bool:
+    d = _load_sessions()
+    api_id   = d.get("api_id", 0) or int(os.environ.get("TELETHON_API_ID", "0") or "0")
+    api_hash = d.get("api_hash", "") or os.environ.get("TELETHON_API_HASH", "")
+    session  = d.get("session", "") or os.environ.get("TELETHON_SESSION", "")
+    return bool(api_id and api_hash and _is_valid_session(session))
+
+
+def _is_valid_session(sess: str) -> bool:
+    if not sess or len(sess) < 100:
+        return False
+    valid_chars = set("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=_-")
+    return all(c in valid_chars for c in sess.strip())
+
+
+def _get_telethon_creds() -> tuple[int, str, str]:
+    """Return (api_id, api_hash, session) — file dahulu, env sebagai fallback."""
+    d        = _load_sessions()
+    api_id   = d.get("api_id", 0) or int(os.environ.get("TELETHON_API_ID", "0") or "0")
+    api_hash = d.get("api_hash", "") or os.environ.get("TELETHON_API_HASH", "")
+    session  = d.get("session", "") or os.environ.get("TELETHON_SESSION", "")
+    return int(api_id), str(api_hash), str(session)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  USER TRACKING
+# ══════════════════════════════════════════════════════════════════════════════
+
 def _load_users() -> dict:
     if USERS_FILE.exists():
         try:
@@ -154,20 +212,16 @@ def _save_users(data: dict):
 
 def track_user(user_id: int, username: str | None, full_name: str):
     data = _load_users()
-    data["users"][str(user_id)] = {
-        "username": username or "",
-        "name": full_name,
-    }
+    data["users"][str(user_id)] = {"username": username or "", "name": full_name}
     _save_users(data)
 
 
 def get_all_user_ids() -> list[int]:
-    data = _load_users()
-    return [int(uid) for uid in data["users"].keys()]
+    return [int(uid) for uid in _load_users()["users"].keys()]
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  CARD GENERATOR (dari card.py, digabung di sini)
+#  CARD GENERATOR
 # ══════════════════════════════════════════════════════════════════════════════
 
 W, H = 1060, 560
@@ -175,7 +229,6 @@ W, H = 1060, 560
 FONT_REGULAR = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
 FONT_BOLD    = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
 
-# Warna
 BG_DEEP   = "#040d14"
 BG_CARD   = "#06111b"
 BG_PANEL  = "#070f18"
@@ -252,7 +305,7 @@ def _draw_glow_line(draw, x0, y0, x1, y1, color_bright, color_dim, width=2):
 
 def _draw_barcode(draw, x, y, w, h, color):
     rng = random.Random(42)
-    cx = x
+    cx  = x
     while cx < x + w:
         bar_w = rng.choice([2, 3, 4, 2, 1, 3])
         if rng.random() > 0.4:
@@ -264,13 +317,13 @@ def _draw_star(draw, cx, cy, r_outer, r_inner, points, fill, outline):
     pts = []
     for i in range(points * 2):
         angle = math.radians(i * 180 / points - 90)
-        r = r_outer if i % 2 == 0 else r_inner
+        r     = r_outer if i % 2 == 0 else r_inner
         pts.append((cx + r * math.cos(angle), cy + r * math.sin(angle)))
     draw.polygon(pts, fill=fill, outline=outline)
 
 
 def generate_card(
-    mention: str,
+    full_name: str,
     user_id: str,
     username: str,
     dc: str,
@@ -288,7 +341,6 @@ def generate_card(
     MARGIN = 18
     CX0, CY0, CX1, CY1 = MARGIN, MARGIN, W - MARGIN, H - MARGIN
 
-    # Glow luar kartu
     for g in range(12, 0, -2):
         draw.rounded_rectangle(
             [CX0 - g, CY0 - g, CX1 + g, CY1 + g],
@@ -296,26 +348,21 @@ def generate_card(
             fill=None, outline=(0, 80 + g * 8, 150 + g * 6),
         )
 
-    # Body kartu
     draw.rounded_rectangle([CX0, CY0, CX1, CY1], radius=22, fill=BG_CARD)
 
-    # Panel kiri
     PANEL_W = 300
     draw.rounded_rectangle([CX0, CY0, CX0 + PANEL_W, CY1], radius=22, fill=BG_PANEL)
     draw.line([(CX0 + PANEL_W, CY0 + 10), (CX0 + PANEL_W, CY1 - 10)], fill=BLUE_MID,  width=3)
     draw.line([(CX0 + PANEL_W + 4, CY0 + 10), (CX0 + PANEL_W + 4, CY1 - 10)], fill=BLUE_BORD, width=1)
     _draw_dot_matrix(draw, CX0 + 8, CY0 + 8, CX0 + PANEL_W - 8, CY1 - 8, "#0a1e30", spacing=16, r=1)
 
-    # Panel kanan
     PANEL_RX = CX0 + PANEL_W + 14
 
-    # Judul
     title_font = _font(34, bold=True)
     for off in [(2, 2), (-1, -1), (1, -1), (-1, 1)]:
         draw.text((PANEL_RX + 20 + off[0], CY0 + 22 + off[1]), "TELEGRAM PROFILE CARD", font=title_font, fill="#001030")
     draw.text((PANEL_RX + 20, CY0 + 22), "TELEGRAM PROFILE CARD", font=title_font, fill=TITLE_COL)
 
-    # Garis bawah judul
     line_y = CY0 + 72
     _draw_glow_line(draw, PANEL_RX + 10, line_y, CX1 - 14, line_y, BLUE_GLOW, BLUE_MID, width=2)
     _draw_glow_line(draw, PANEL_RX + 10, line_y + 5, CX1 - 14, line_y + 5, BLUE_BORD, BLUE_DIM, width=1)
@@ -323,7 +370,6 @@ def generate_card(
         draw.ellipse([px - 4, line_y - 4, px + 4, line_y + 4], fill=BLUE_GLOW)
         draw.ellipse([px - 2, line_y - 2, px + 2, line_y + 2], fill=CYAN_LITE)
 
-    # Avatar
     AV_DIAM = 168
     AV_R    = AV_DIAM // 2
     AV_CX   = CX0 + PANEL_W // 2
@@ -340,28 +386,26 @@ def generate_card(
         draw.ellipse([AV_CX - ring_r, AV_CY - ring_r, AV_CX + ring_r, AV_CY + ring_r], outline=ring_c, width=ring_w)
 
     for angle_deg in range(0, 360, 20):
-        ang = math.radians(angle_deg)
-        px  = AV_CX + int((AV_R + 8) * math.cos(ang))
-        py  = AV_CY + int((AV_R + 8) * math.sin(ang))
-        dot_r = 2 if angle_deg % 40 == 0 else 1
+        ang    = math.radians(angle_deg)
+        px     = AV_CX + int((AV_R + 8) * math.cos(ang))
+        py     = AV_CY + int((AV_R + 8) * math.sin(ang))
+        dot_r  = 2 if angle_deg % 40 == 0 else 1
         draw.ellipse([px - dot_r, py - dot_r, px + dot_r, py + dot_r],
                      fill=BLUE_GLOW if angle_deg % 40 == 0 else BLUE_BORD)
 
-    letter = (mention.lstrip("@") or "?")[0]
+    letter = (full_name or "?")[0]
     av = _circle_avatar(avatar_bytes, AV_DIAM, letter=letter)
     img.paste(av, (AV_CX - AV_R, AV_CY - AV_R), av)
 
     draw = ImageDraw.Draw(img)
 
-    # Logo TG kecil
     TG_CX, TG_CY, TG_R = AV_CX, AV_CY + AV_R + 26, 18
     draw.ellipse([TG_CX - TG_R - 3, TG_CY - TG_R - 3, TG_CX + TG_R + 3, TG_CY + TG_R + 3], fill=BLUE_BORD, outline=BLUE_GLOW, width=2)
     draw.ellipse([TG_CX - TG_R, TG_CY - TG_R, TG_CX + TG_R, TG_CY + TG_R], fill="#1a7fc4")
     draw.text((TG_CX, TG_CY), "✈", font=_font(18, bold=True), fill=WHITE, anchor="mm")
 
-    # Fields
     fields = [
-        ("Nama Lengkap",    str(mention)),
+        ("Nama Lengkap",    str(full_name)),
         ("User ID",         str(user_id)),
         ("Username",        str(username)),
         ("Data Center",     str(dc)),
@@ -398,17 +442,14 @@ def generate_card(
 
         draw.text((FX_VALUE, fy), value, font=VALUE_FONT, fill=val_color)
 
-    # Sudut tech
     _draw_tech_corner(draw, CX0, CY0, CX1 - CX0, CY1 - CY0, color=BLUE_GLOW, size=30, thick=3)
     _draw_tech_corner(draw, CX0 + 8, CY0 + 8, CX1 - CX0 - 16, CY1 - CY0 - 16, color=BLUE_MID, size=16, thick=2)
 
-    # Garis atas bawah panel kanan
     for gap in [0, 3]:
         draw.line([(PANEL_RX + 10, CY0 + 10 + gap), (CX1 - 14, CY0 + 10 + gap)], fill=BLUE_MID if gap else BLUE_BORD, width=1)
         draw.line([(PANEL_RX + 10, CY1 - 10 - gap), (CX1 - 14, CY1 - 10 - gap)], fill=BLUE_MID if gap else BLUE_BORD, width=1)
 
-    # Footer
-    FOOTER_Y     = CY1 - 38
+    FOOTER_Y      = CY1 - 38
     footer_line_y = FOOTER_Y + 14
 
     draw.text((CX0 + 28, FOOTER_Y + 6), "PREMIUM ACCOUNT", font=_font(12), fill=BLUE_BORD)
@@ -434,139 +475,47 @@ def generate_card(
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  GEN SESSION (dari gen_session.py, digabung di sini)
-# ══════════════════════════════════════════════════════════════════════════════
-
-def _save_env(key: str, value: str):
-    lines = []
-    if ENV_FILE.exists():
-        lines = ENV_FILE.read_text(encoding="utf-8").splitlines()
-    updated = False
-    for i, line in enumerate(lines):
-        if line.startswith(f"{key}=") or line.startswith(f"{key} ="):
-            lines[i] = f"{key}={value}"
-            updated = True
-            break
-    if not updated:
-        lines.append(f"{key}={value}")
-    ENV_FILE.write_text("\n".join(lines) + "\n", encoding="utf-8")
-
-
-async def _run_gensession():
-    print("\n" + "═" * 55)
-    print("   🔧  GENERATE TELETHON SESSION — CekID Bot")
-    print("═" * 55)
-
-    if not TELETHON_API_ID or not TELETHON_API_HASH:
-        print("❌ TELETHON_API_ID / TELETHON_API_HASH belum diisi di .env!")
-        sys.exit(1)
-
-    while True:
-        phone = input("📱 Masukkan nomor HP (format: +628xxx): ").strip()
-        if re.match(r"^\+?\d{8,15}$", phone):
-            break
-        print("   ⚠️  Format tidak valid. Contoh: +6281234567890\n")
-
-    client = TelegramClient(StringSession(), TELETHON_API_ID, TELETHON_API_HASH)
-    await client.connect()
-
-    print(f"\n📨 Mengirim kode OTP ke {phone} …")
-    sent = await client.send_code_request(phone)
-    print("✅ Kode OTP dikirim!\n")
-
-    for attempt in range(3):
-        otp = input("🔢 Masukkan kode OTP: ").strip()
-        try:
-            await client.sign_in(phone, otp, phone_code_hash=sent.phone_code_hash)
-            break
-        except PhoneCodeInvalidError:
-            print(f"   ❌ Kode salah. Sisa percobaan: {2 - attempt}\n")
-            if attempt == 2:
-                print("❌ Terlalu banyak percobaan.")
-                await client.disconnect()
-                sys.exit(1)
-        except PhoneCodeExpiredError:
-            print("❌ Kode OTP kadaluarsa. Ulangi lagi.")
-            await client.disconnect()
-            sys.exit(1)
-        except SessionPasswordNeededError:
-            print("\n🔐 Akun pakai 2FA.")
-            for pw_attempt in range(3):
-                pw = getpass.getpass("🔑 Password 2FA: ")
-                try:
-                    await client.sign_in(password=pw)
-                    break
-                except Exception as e:
-                    print(f"   ❌ Password salah: {e}")
-                    if pw_attempt == 2:
-                        await client.disconnect()
-                        sys.exit(1)
-            break
-
-    session_str = client.session.save()
-    await client.disconnect()
-
-    _save_env("TELETHON_SESSION", session_str)
-    os.environ["TELETHON_SESSION"] = session_str
-
-    print("\n" + "═" * 55)
-    print("✅ SESSION BERHASIL! Disimpan ke .env")
-    print("═" * 55)
-    print("\nSalin baris ini ke file .env kamu:")
-    print(f"TELETHON_SESSION={session_str}\n")
-
-
-# ══════════════════════════════════════════════════════════════════════════════
-#  BOT UTAMA
+#  PREMIUM EMOJI & HTML PARSER
 # ══════════════════════════════════════════════════════════════════════════════
 
 def ce(emoji_id: str, fallback: str) -> str:
     return f'<tg-emoji emoji-id="{emoji_id}">{fallback}</tg-emoji>'
 
-E_MENTION   = ce("5852636219250317264", "⭐")   # star
-E_ID        = ce("5969696910112463071", "🪪")   # ID card
-E_USERNAME  = ce("5447410659077661506", "🌐")   # globe
-E_DC        = ce("6003735582495216112", "📡")   # telegram/signal
-E_PREMIUM   = ce("5861637182212543018", "💎")   # purple premium
-E_DATE      = ce("5413879192267805083", "📅")   # calendar
-E_COLOR     = ce("5395444784611480792", "🎨")   # pencil/color
-E_BOT       = ce("5188481279963715781", "🚀")   # rocket
-E_SCAM      = ce("5420323339723881652", "🚫")   # warning/danger
-E_RESTRICT  = ce("5420323339723881652", "🛡")   # warning/danger
-E_VERIFIED  = ce("5251203410396458957", "✅")   # blue shield checkmark
-E_BIO       = ce("5282843764451195532", "📋")   # clipboard
-E_LASTSEEN  = ce("5461174173835489008", "⏳")   # clock
-E_CHATID    = ce("5969696910112463071", "🪪")   # ID card
-E_TITLE     = ce("5852636219250317264", "⭐")   # star
-E_TYPE      = ce("5918075981649679952", "🔴")   # red dot
-E_FAKE      = ce("5420323339723881652", "🚫")   # warning/danger
-E_NOFORWARD = ce("5420323339723881652", "🛡")   # warning
-E_MEMBERS   = ce("5348136664738839786", "👥")   # special
-E_DESC      = ce("5282843764451195532", "📋")   # clipboard
-E_INFO      = ce("5258474669769497337", "ℹ️")   # info circle
-E_ROCKET    = ce("5188481279963715781", "🚀")   # rocket
-E_BELL      = ce("6271271702408204490", "🔔")   # bell
-E_HOURGLASS = ce("5461174173835489008", "⏳")   # clock
-E_CLOCK     = ce("5461174173835489008", "⏳")   # clock
-
-# ── Premium emoji — HTML-to-MessageEntity converter ───────────────────────────
-# Telegram Bot API mendukung custom emoji via MessageEntity(type='custom_emoji').
-# Cara paling andal adalah PARSE HTML sendiri → kirim text + entities eksplisit
-# (tanpa parse_mode), sehingga tidak bergantung pada HTML parser Telegram
-# yang kadang reject <tg-emoji> tergantung versi API / bot token.
+E_MENTION   = ce("5852636219250317264", "⭐")
+E_ID        = ce("5969696910112463071", "🪪")
+E_USERNAME  = ce("5447410659077661506", "🌐")
+E_DC        = ce("6003735582495216112", "📡")
+E_PREMIUM   = ce("5861637182212543018", "💎")
+E_DATE      = ce("5413879192267805083", "📅")
+E_COLOR     = ce("5395444784611480792", "🎨")
+E_BOT       = ce("5188481279963715781", "🚀")
+E_SCAM      = ce("5420323339723881652", "🚫")
+E_RESTRICT  = ce("5420323339723881652", "🛡")
+E_VERIFIED  = ce("5251203410396458957", "✅")
+E_BIO       = ce("5282843764451195532", "📋")
+E_LASTSEEN  = ce("5461174173835489008", "⏳")
+E_CHATID    = ce("5969696910112463071", "🪪")
+E_TITLE     = ce("5852636219250317264", "⭐")
+E_TYPE      = ce("5918075981649679952", "🔴")
+E_FAKE      = ce("5420323339723881652", "🚫")
+E_NOFORWARD = ce("5420323339723881652", "🛡")
+E_MEMBERS   = ce("5348136664738839786", "👥")
+E_DESC      = ce("5282843764451195532", "📋")
+E_INFO      = ce("5258474669769497337", "ℹ️")
+E_ROCKET    = ce("5188481279963715781", "🚀")
+E_BELL      = ce("6271271702408204490", "🔔")
+E_HOURGLASS = ce("5461174173835489008", "⏳")
+E_CLOCK     = ce("5461174173835489008", "⏳")
 
 import html.parser as _html_parser
 from telegram import MessageEntity
 
 
 def _utf16_len(s: str) -> int:
-    """Panjang string dalam UTF-16 code units (yang dipakai Telegram untuk offset)."""
     return len(s.encode("utf-16-le")) // 2
 
 
 class _TelegramHTMLParser(_html_parser.HTMLParser):
-    """Parse Telegram HTML (termasuk <tg-emoji>) → plain text + list MessageEntity."""
-
     _TAG_TYPE = {
         "b": "bold", "strong": "bold",
         "i": "italic", "em": "italic",
@@ -582,7 +531,7 @@ class _TelegramHTMLParser(_html_parser.HTMLParser):
         super().__init__(convert_charrefs=False)
         self._parts: list[str] = []
         self._entities: list[MessageEntity] = []
-        self._stack: list[tuple[str, dict, int]] = []   # (tag, attrs, utf16_start)
+        self._stack: list[tuple[str, dict, int]] = []
         self._utf16_pos: int = 0
 
     def handle_starttag(self, tag: str, attrs):
@@ -595,10 +544,8 @@ class _TelegramHTMLParser(_html_parser.HTMLParser):
                 length = self._utf16_pos - start
                 if length <= 0:
                     break
-
                 etype = self._TAG_TYPE.get(tag)
                 ekw: dict = {}
-
                 if etype:
                     pass
                 elif tag == "a":
@@ -607,7 +554,6 @@ class _TelegramHTMLParser(_html_parser.HTMLParser):
                 elif tag == "tg-emoji":
                     etype = "custom_emoji"
                     ekw["custom_emoji_id"] = attrs_dict.get("emoji-id", "")
-
                 if etype:
                     self._entities.append(
                         MessageEntity(type=etype, offset=start, length=length, **ekw)
@@ -633,26 +579,17 @@ class _TelegramHTMLParser(_html_parser.HTMLParser):
 
 
 def _html_to_entities(html_text: str) -> tuple[str, list[MessageEntity]]:
-    """Konversi HTML Telegram (dengan <tg-emoji>) ke (plain_text, [MessageEntity])."""
     p = _TelegramHTMLParser()
     p.feed(html_text)
     return p.result()
 
 
 def _strip_tgemoji(text: str) -> str:
-    """Hapus <tg-emoji> tag, sisakan fallback emoji biasa. Formatting HTML lain tetap."""
     return re.sub(r'<tg-emoji[^>]*>(.*?)</tg-emoji>', r'\1', text, flags=re.DOTALL)
 
 
 async def safe_send_message(bot, *, chat_id, text, parse_mode=None, reply_markup=None, **kwargs):
-    """
-    3-lapisan fallback untuk pesan yang mengandung <tg-emoji>:
-      1. Entity-based (HTML parser kita sendiri → MessageEntity eksplisit)
-      2. HTML biasa dengan <tg-emoji> (Telegram parse sendiri)
-      3. Strip <tg-emoji>, kirim dengan emoji Unicode biasa
-    """
     if parse_mode == ParseMode.HTML and "<tg-emoji" in text:
-        # Lapisan 1: entity eksplisit
         try:
             plain, entities = _html_to_entities(text)
             return await bot.send_message(
@@ -661,8 +598,6 @@ async def safe_send_message(bot, *, chat_id, text, parse_mode=None, reply_markup
             )
         except Exception as e1:
             log.warning(f"[emoji] Entity-send gagal ({e1}), coba HTML…")
-
-        # Lapisan 2: HTML biasa
         try:
             return await bot.send_message(
                 chat_id=chat_id, text=text, parse_mode=parse_mode,
@@ -670,14 +605,11 @@ async def safe_send_message(bot, *, chat_id, text, parse_mode=None, reply_markup
             )
         except Exception as e2:
             log.warning(f"[emoji] HTML-send gagal ({e2}), fallback plain emoji…")
-
-        # Lapisan 3: strip <tg-emoji>, pakai Unicode fallback
         stripped = _strip_tgemoji(text)
         return await bot.send_message(
             chat_id=chat_id, text=stripped, parse_mode=parse_mode,
             reply_markup=reply_markup, **kwargs,
         )
-
     return await bot.send_message(
         chat_id=chat_id, text=text, parse_mode=parse_mode,
         reply_markup=reply_markup, **kwargs,
@@ -685,7 +617,6 @@ async def safe_send_message(bot, *, chat_id, text, parse_mode=None, reply_markup
 
 
 async def safe_send_photo(bot, *, chat_id, photo, caption=None, parse_mode=None, reply_markup=None, **kwargs):
-    """3-lapisan fallback untuk caption foto yang mengandung <tg-emoji>."""
     if caption and parse_mode == ParseMode.HTML and "<tg-emoji" in caption:
         try:
             plain, entities = _html_to_entities(caption)
@@ -695,7 +626,6 @@ async def safe_send_photo(bot, *, chat_id, photo, caption=None, parse_mode=None,
             )
         except Exception as e1:
             log.warning(f"[emoji] Entity-photo gagal ({e1}), coba HTML…")
-
         try:
             return await bot.send_photo(
                 chat_id=chat_id, photo=photo, caption=caption,
@@ -703,13 +633,11 @@ async def safe_send_photo(bot, *, chat_id, photo, caption=None, parse_mode=None,
             )
         except Exception as e2:
             log.warning(f"[emoji] HTML-photo gagal ({e2}), fallback plain emoji…")
-
         stripped = _strip_tgemoji(caption)
         return await bot.send_photo(
             chat_id=chat_id, photo=photo, caption=stripped,
             parse_mode=parse_mode, reply_markup=reply_markup, **kwargs,
         )
-
     return await bot.send_photo(
         chat_id=chat_id, photo=photo, caption=caption,
         parse_mode=parse_mode, reply_markup=reply_markup, **kwargs,
@@ -717,7 +645,6 @@ async def safe_send_photo(bot, *, chat_id, photo, caption=None, parse_mode=None,
 
 
 async def safe_edit_text(msg, *, text, parse_mode=None, reply_markup=None, **kwargs):
-    """3-lapisan fallback untuk edit pesan yang mengandung <tg-emoji>."""
     if parse_mode == ParseMode.HTML and "<tg-emoji" in text:
         try:
             plain, entities = _html_to_entities(text)
@@ -727,7 +654,6 @@ async def safe_edit_text(msg, *, text, parse_mode=None, reply_markup=None, **kwa
             )
         except Exception as e1:
             log.warning(f"[emoji] Entity-edit gagal ({e1}), coba HTML…")
-
         try:
             return await msg.edit_text(
                 text=text, parse_mode=parse_mode,
@@ -735,34 +661,58 @@ async def safe_edit_text(msg, *, text, parse_mode=None, reply_markup=None, **kwa
             )
         except Exception as e2:
             log.warning(f"[emoji] HTML-edit gagal ({e2}), fallback plain emoji…")
-
         stripped = _strip_tgemoji(text)
         return await msg.edit_text(
-            text=stripped, parse_mode=parse_mode,
-            reply_markup=reply_markup, **kwargs,
+            text=stripped, parse_mode=parse_mode, reply_markup=reply_markup, **kwargs,
         )
-
     return await msg.edit_text(
         text=text, parse_mode=parse_mode, reply_markup=reply_markup, **kwargs,
     )
 
 
+# ══════════════════════════════════════════════════════════════════════════════
+#  HELPER FUNCTIONS
+# ══════════════════════════════════════════════════════════════════════════════
+
 def estimate_date(user_id: int) -> str:
+    """
+    Estimasi tanggal daftar Telegram berdasarkan User ID.
+    Auto-detect tanggal hari ini dan ekstrapolasi real-time jika ID
+    melampaui checkpoint terakhir (mendukung tahun 2026 dan seterusnya).
+    """
     uid   = abs(int(user_id))
+    today = datetime.now(timezone.utc)
+
     known = [(i, datetime.fromisoformat(d).replace(tzinfo=timezone.utc)) for i, d in KNOWN_IDS]
-    lo, hi = known[0], known[-1]
-    for i in range(len(known) - 1):
-        if known[i][0] <= uid < known[i + 1][0]:
-            lo, hi = known[i], known[i + 1]
-            break
-    t  = (uid - lo[0]) / max(hi[0] - lo[0], 1)
-    ts = lo[1].timestamp() + t * (hi[1].timestamp() - lo[1].timestamp())
-    d  = datetime.fromtimestamp(ts, tz=timezone.utc)
+
+    if uid <= known[0][0]:
+        d = known[0][1]
+
+    elif uid >= known[-1][0]:
+        # Ekstrapolasi linear menggunakan rata-rata pertumbuhan 6 checkpoint terakhir
+        pts      = known[-6:]
+        id_span  = pts[-1][0] - pts[0][0]
+        sec_span = (pts[-1][1] - pts[0][1]).total_seconds()
+        rate     = id_span / max(sec_span, 1)   # ID per detik
+        excess   = uid - known[-1][0]
+        d        = known[-1][1] + timedelta(seconds=excess / rate)
+        if d > today:
+            d = today   # tidak melebihi hari ini
+
+    else:
+        lo, hi = known[0], known[-1]
+        for i in range(len(known) - 1):
+            if known[i][0] <= uid < known[i + 1][0]:
+                lo, hi = known[i], known[i + 1]
+                break
+        t  = (uid - lo[0]) / max(hi[0] - lo[0], 1)
+        ts = lo[1].timestamp() + t * (hi[1].timestamp() - lo[1].timestamp())
+        d  = datetime.fromtimestamp(ts, tz=timezone.utc)
+
     return f"{d.day} {MONTHS_ID[d.month]} {d.year}"
 
 
 def dc_label(dc_id) -> str:
-    """Konversi dc_id integer → label lengkap dengan lokasi. '?' → 'Privat 🔒'."""
     if dc_id is None:
         return "Privat 🔒"
     try:
@@ -793,41 +743,55 @@ def last_seen(status) -> str:
     return "Lama sekali"
 
 
-async def telethon_client() -> TelegramClient:
+# ══════════════════════════════════════════════════════════════════════════════
+#  TELETHON CLIENT
+# ══════════════════════════════════════════════════════════════════════════════
+
+async def telethon_client() -> TelegramClient | None:
     global _client
     if _client and _client.is_connected():
         return _client
-    # Prioritas: env var langsung (Replit secrets) → .env file
-    sess = os.environ.get("TELETHON_SESSION", TELETHON_SESSION)
-    env_path = Path(__file__).parent / ".env"
-    if env_path.exists():
-        for line in env_path.read_text(encoding="utf-8").splitlines():
-            if line.startswith("TELETHON_SESSION="):
-                val = line.split("=", 1)[1].strip()
-                if val and len(val) >= 100:
-                    sess = val
-                break
-    _client = TelegramClient(StringSession(sess), TELETHON_API_ID, TELETHON_API_HASH)
+    api_id, api_hash, session = _get_telethon_creds()
+    if not api_id or not api_hash:
+        log.warning("⚠️  Telethon credentials belum dikonfigurasi. Gunakan /admin → Sessions.")
+        return None
+    _client = TelegramClient(StringSession(session), api_id, api_hash)
     await _client.connect()
     if await _client.is_user_authorized():
         log.info("✅ Telethon terhubung!")
     else:
-        log.warning("⚠️  Telethon session tidak valid! Jalankan: python3 main.py --gensession")
+        log.warning("⚠️  Telethon session tidak valid. Gunakan /admin → Sessions untuk setup ulang.")
     return _client
 
+
+async def _disconnect_client():
+    global _client
+    if _client:
+        try:
+            await _client.disconnect()
+        except Exception:
+            pass
+        _client = None
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  FETCH USER / CHAT
+# ══════════════════════════════════════════════════════════════════════════════
 
 async def fetch_user(identifier):
     try:
         cl     = await telethon_client()
+        if not cl:
+            return None
         entity = await cl.get_entity(identifier)
         full   = await cl(GetFullUserRequest(entity))
         user   = full.users[0]
         fu     = full.full_user
 
         uid      = user.id
+        # Nama lengkap (bukan username)
         fname    = ((user.first_name or "") + " " + (user.last_name or "")).strip() or "Unknown"
         username = f"@{user.username}" if user.username else "Tidak Ada"
-        mention  = f"@{user.username}" if user.username else fname
         dc_id    = getattr(getattr(user, "photo", None), "dc_id", None)
 
         photo_buf = io.BytesIO()
@@ -840,9 +804,8 @@ async def fetch_user(identifier):
         return {
             "type":       "user",
             "uid":        uid,
-            "mention":    mention,
-            "username":   username,
             "full_name":  fname,
+            "username":   username,
             "dc":         dc_label(dc_id),
             "premium":    getattr(user, "premium",    False) or False,
             "bot":        getattr(user, "bot",        False) or False,
@@ -866,13 +829,14 @@ async def fetch_user(identifier):
 async def fetch_chat(identifier):
     try:
         cl     = await telethon_client()
+        if not cl:
+            return None
         entity = await cl.get_entity(identifier)
 
         if isinstance(entity, Channel):
-            full = await cl(GetFullChannelRequest(entity))
-            fu   = full.full_chat
-            ch   = entity
-
+            full     = await cl(GetFullChannelRequest(entity))
+            fu       = full.full_chat
+            ch       = entity
             chat_id  = f"-100{ch.id}"
             title    = ch.title or "?"
             username = f"@{ch.username}" if getattr(ch, "username", None) else "Tidak Ada"
@@ -916,21 +880,25 @@ async def fetch_chat(identifier):
         return None
 
 
+# ══════════════════════════════════════════════════════════════════════════════
+#  CAPTION BUILDER
+# ══════════════════════════════════════════════════════════════════════════════
+
 def caption_user(d: dict, is_self: bool) -> str:
-    mention  = html.escape(str(d['mention']))
-    username = html.escape(str(d['username']))
-    cname    = html.escape(str(d['cname']))
-    cemoji   = html.escape(str(d['cemoji']))
-    id_info_ = html.escape(str(d['id_info']))
-    est_date = html.escape(str(d['est_date']))
-    dc       = html.escape(str(d['dc']))
+    full_name = html.escape(str(d['full_name']))
+    username  = html.escape(str(d['username']))
+    cname     = html.escape(str(d['cname']))
+    cemoji    = html.escape(str(d['cemoji']))
+    id_info_  = html.escape(str(d['id_info']))
+    est_date  = html.escape(str(d['est_date']))
+    dc        = html.escape(str(d['dc']))
 
     if is_self:
         return (
             f"<u>{'─'*3} {E_ROCKET} <b>✦ INFORMASI PROFIL ✦</b> {E_ROCKET} {'─'*3}</u>\n\n"
             f"<blockquote>"
             f"{'─'*4} {E_ROCKET} <b>Berikut adalah detail profil Anda saat ini:</b>\n\n"
-            f"{E_MENTION} <b>Mention</b>        »  <b>{mention}</b>\n"
+            f"{E_MENTION} <b>Nama Lengkap</b>   »  <b>{full_name}</b>\n"
             f"{E_ID} <b>ID Kamu</b>         »  <b><code>{d['uid']}</code></b>  <i>({id_info_})</i>\n"
             f"{E_USERNAME} <b>Username</b>      »  <b>{username}</b>\n"
             f"{E_DC} <b>DC Server</b>       »  <b>{dc}</b>\n"
@@ -950,7 +918,7 @@ def caption_user(d: dict, is_self: bool) -> str:
             f"<u>{'─'*3} {E_MEMBERS} <b>✦ INFORMASI PROFIL TARGET ✦</b> {E_MEMBERS} {'─'*3}</u>\n\n"
             f"<blockquote>"
             f"{'─'*4} {E_ROCKET} <b>Berikut adalah detail profil target:</b>\n\n"
-            f"{E_MENTION} <b>Mention</b>        »  <b>{mention}</b>\n"
+            f"{E_MENTION} <b>Nama Lengkap</b>   »  <b>{full_name}</b>\n"
             f"{E_ID} <b>User ID</b>         »  <b><code>{d['uid']}</code></b>  <i>({id_info_})</i>\n"
             f"{E_USERNAME} <b>Username</b>      »  <b>{username}</b>\n"
             f"{E_DC} <b>DC Server</b>       »  <b>{dc}</b>\n"
@@ -997,57 +965,105 @@ def caption_chat(d: dict) -> str:
     )
 
 
+# ══════════════════════════════════════════════════════════════════════════════
+#  KEYBOARDS — button warna-warni style Telegram Bot API
+# ══════════════════════════════════════════════════════════════════════════════
+#  Palet warna via emoji:
+#  🔵 Primary/Biru  🔘 Secondary/Abu  🟢 Success/Hijau  🔴 Danger/Merah
+#  🟡 Warning/Kuning  🔷 Info/Biru Muda  ⬜ Light/Putih  ⬛ Dark/Hitam
+
 def kb() -> InlineKeyboardMarkup:
+    """Keyboard user biasa — JOIN STORE pakai warna Merah (Danger)."""
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton(" JOIN STORE KAMI ", url=STORE_LINK)],
+        [InlineKeyboardButton("🔴  JOIN STORE KAMI", url=STORE_LINK)],
     ])
 
 
-def kb_admin() -> InlineKeyboardMarkup:
-    """Keyboard panel admin — tiap button beda warna pakai style native PTB v22."""
+def kb_admin(session_ok: bool = False) -> InlineKeyboardMarkup:
+    """Panel admin — tiap tombol warna berbeda, Sessions hijau (Success)."""
+    sess_label = "🟢  Sessions  ✅" if session_ok else "🟢  Sessions  ⚠️ Belum Terhubung"
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("📣  BROADCAST",     callback_data="admin_broadcast")],
-        [InlineKeyboardButton("📊  Statistik Bot", callback_data="admin_stats")],
+        [InlineKeyboardButton("🔵  BROADCAST",      callback_data="admin_broadcast")],
+        [InlineKeyboardButton("🟡  Statistik Bot",  callback_data="admin_stats")],
+        [InlineKeyboardButton(sess_label,            callback_data="admin_sessions")],
     ])
 
 
 def kb_admin_back() -> InlineKeyboardMarkup:
-    """Keyboard satu tombol kembali ke panel admin utama."""
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("🔙  Kembali ke Panel Admin", callback_data="admin_back")],
+        [InlineKeyboardButton("🔷  Kembali ke Panel Admin", callback_data="admin_back")],
     ])
 
 
-def _admin_panel_text(username: str, uid: int, dc_str: str, total_users: int, now: str) -> str:
-    """Bangun teks panel admin yang konsisten — dipakai di cmd_admin, cmd_start, dan admin_back."""
+def kb_sessions_setup() -> InlineKeyboardMarkup:
+    """Keyboard di halaman Sessions."""
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("🟢  Mulai Setup Sessions", callback_data="sessions_start")],
+        [InlineKeyboardButton("🔷  Kembali ke Panel Admin", callback_data="admin_back")],
+    ])
+
+
+def kb_sessions_cancel() -> InlineKeyboardMarkup:
+    """Tombol cancel saat di tengah alur setup."""
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("🔴  Batalkan Setup", callback_data="sessions_cancel")],
+    ])
+
+
+def kb_sessions_done() -> InlineKeyboardMarkup:
+    """Setelah sessions berhasil terhubung."""
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("🔷  Kembali ke Menu Utama", callback_data="admin_back")],
+    ])
+
+
+def kb_notify_sessions() -> InlineKeyboardMarkup:
+    """Notifikasi startup — shortcut ke Sessions."""
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("🟢  Hubungkan Sessions", callback_data="admin_sessions")],
+    ])
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  ADMIN PANEL BUILDER
+# ══════════════════════════════════════════════════════════════════════════════
+
+def _admin_panel_text(username: str, uid: int, dc_str: str, total_users: int, now: str,
+                      session_ok: bool = False) -> str:
+    sess_line = (
+        "\n⚠️ <b>Sessions belum terhubung! Silahkan hubungkan di bawah.</b>"
+        if not session_ok else ""
+    )
     return (
         f"<u><b>👑 PANEL ADMIN</b></u>\n\n"
         f"<b>Hallo Sayang! Selamat datang di perintah admin 💕</b>\n\n"
         f"<blockquote>"
-        f"👤 <b>Username</b>    »  <b>{html.escape(username)}</b>\n"
+        f"👤 <b>Nama</b>        »  <b>{html.escape(username)}</b>\n"
         f"🆔 <b>ID</b>          »  <b><code>{uid}</code></b>\n"
         f"💻 <b>DC Server</b>   »  <b>{html.escape(dc_str)}</b>\n"
         f"👥 <b>Total User</b>  »  <b>{total_users:,}</b>\n"
         f"🕐 <b>Waktu</b>       »  <b>{now}</b>"
-        f"</blockquote>\n\n"
+        f"</blockquote>"
+        f"{sess_line}\n\n"
         f"<u><b>📋 Pilih perintah di bawah ini:</b></u>"
     )
 
 
 async def _fetch_admin_panel_data(uid: int, ptb_user) -> tuple[str, str, int, str]:
-    """Return (username, dc_str, total_users, now) untuk panel admin."""
-    username    = f"@{ptb_user.username}" if ptb_user.username else ptb_user.full_name
+    full_name   = ((ptb_user.first_name or "") + " " + (ptb_user.last_name or "")).strip() or "Unknown"
     total_users = len(get_all_user_ids())
     now         = datetime.now(timezone(timedelta(hours=8))).strftime("%d/%m/%Y %H:%M WITA")
     dc_str      = dc_label(None)
     try:
         cl      = await telethon_client()
-        entity  = await cl.get_entity(uid)
-        dc_raw  = getattr(getattr(entity, "photo", None), "dc_id", None)
-        dc_str  = dc_label(dc_raw)
+        if cl:
+            lookup = f"@{ptb_user.username}" if ptb_user.username else uid
+            entity = await cl.get_entity(lookup)
+            dc_raw = getattr(getattr(entity, "photo", None), "dc_id", None)
+            dc_str = dc_label(dc_raw)
     except Exception:
         pass
-    return username, dc_str, total_users, now
+    return full_name, dc_str, total_users, now
 
 
 _LOADING_TEXT = (
@@ -1059,7 +1075,7 @@ _LOADING_TEXT = (
 
 async def send_user_card(chat_id: int, d: dict, ctx: ContextTypes.DEFAULT_TYPE, is_self: bool):
     card = generate_card(
-        mention=d["mention"], user_id=str(d["uid"]), username=d["username"],
+        full_name=d["full_name"], user_id=str(d["uid"]), username=d["username"],
         dc=d["dc"], is_premium=d["premium"], estimated_date=d["est_date"],
         color_name=d["cname"], color_hex=d["chex"], color_emoji=d["cemoji"],
         avatar_bytes=d["photo"],
@@ -1072,7 +1088,10 @@ async def send_user_card(chat_id: int, d: dict, ctx: ContextTypes.DEFAULT_TYPE, 
 
 
 def _err_msg(detail: str = "") -> str:
-    extra = f"\n\n<blockquote><b>🔍 Detail:</b> <code>{html.escape(str(detail)[:200])}</code></blockquote>" if detail else ""
+    extra = (
+        f"\n\n<blockquote><b>🔍 Detail:</b> <code>{html.escape(str(detail)[:200])}</code></blockquote>"
+        if detail else ""
+    )
     return (
         f"<u><b>{'─'*3} ❌ GAGAL MENGAMBIL DATA ❌ {'─'*3}</b></u>\n\n"
         f"<blockquote>"
@@ -1080,21 +1099,339 @@ def _err_msg(detail: str = "") -> str:
         f"<b>Kemungkinan penyebab:</b>\n"
         f"<b>• Profil akun diset privat</b>\n"
         f"<b>• Target tidak ditemukan</b>\n"
-        f"<b>• Koneksi Telethon terputus</b>"
+        f"<b>• Koneksi Telethon terputus</b>\n"
+        f"<b>• Sessions belum dikonfigurasi (/admin → 🟢 Sessions)</b>"
         f"</blockquote>"
         f"{extra}\n\n"
         f"<u><b>🔄 Silakan coba lagi dengan ketik /start</b></u>"
     )
 
 
+# ══════════════════════════════════════════════════════════════════════════════
+#  SESSIONS SETUP FLOW
+# ══════════════════════════════════════════════════════════════════════════════
+
+def _sessions_page_text(session_ok: bool) -> str:
+    if session_ok:
+        d       = _load_sessions()
+        api_id  = d.get("api_id", "?")
+        sess    = d.get("session", "")
+        preview = sess[:20] + "..." if len(sess) > 20 else sess
+        return (
+            f"<u><b>🔗 SESSIONS</b></u>\n\n"
+            f"<blockquote>"
+            f"<b>✅ Sessions sudah terhubung!</b>\n\n"
+            f"🔑 <b>API ID</b>      »  <b><code>{api_id}</code></b>\n"
+            f"🔐 <b>Session</b>    »  <b><code>{preview}</code></b>\n\n"
+            f"<b>Bot bisa digunakan dengan akurat ✅</b>"
+            f"</blockquote>\n\n"
+            f"<b>Untuk setup ulang, tekan tombol di bawah.</b>"
+        )
+    else:
+        return (
+            f"<u><b>🔗 SESSIONS</b></u>\n\n"
+            f"<blockquote>"
+            f"<b>⚠️ Sessions belum terhubung!</b>\n\n"
+            f"Untuk mengaktifkan fitur penuh bot, kamu perlu menghubungkan\n"
+            f"akun Telegram kamu via <b>API ID</b>, <b>API Hash</b>, dan <b>nomor HP</b>.\n\n"
+            f"📋 <b>Yang dibutuhkan:</b>\n"
+            f"• API ID dan API Hash dari <a href='https://my.telegram.org'>my.telegram.org</a>\n"
+            f"• Nomor HP yang terdaftar di Telegram\n"
+            f"• Kode OTP yang dikirim Telegram\n"
+            f"• Password 2FA (jika diaktifkan)"
+            f"</blockquote>\n\n"
+            f"<b>Tekan tombol di bawah untuk memulai setup:</b>"
+        )
+
+
+async def _start_sessions_flow(bot, admin_id: int, chat_id: int, msg_id: int):
+    """Mulai alur setup sessions — minta API ID."""
+    _SESSION_SETUP[admin_id] = {
+        "state":           SS_API_ID,
+        "chat_id":         chat_id,
+        "msg_id":          msg_id,
+        "api_id":          0,
+        "api_hash":        "",
+        "phone":           "",
+        "pclient":         None,
+        "phone_code_hash": "",
+    }
+    text = (
+        f"<u><b>🔗 SETUP SESSIONS — Langkah 1/4</b></u>\n\n"
+        f"<blockquote>"
+        f"<b>📱 Masukkan API ID kamu:</b>\n\n"
+        f"API ID bisa didapatkan di:\n"
+        f"<a href='https://my.telegram.org'>my.telegram.org</a> → API development tools\n\n"
+        f"<b>Format:</b> angka, contoh: <code>1234567</code>"
+        f"</blockquote>"
+    )
+    await bot.edit_message_text(
+        chat_id=chat_id, message_id=msg_id,
+        text=text, parse_mode=ParseMode.HTML,
+        reply_markup=kb_sessions_cancel(),
+    )
+
+
+async def _handle_session_input(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    """Proses input text dari admin selama alur setup sessions."""
+    user    = update.effective_user
+    text    = (update.message.text or "").strip()
+    state   = _SESSION_SETUP.get(user.id, {})
+    chat_id = state.get("chat_id", user.id)
+    msg_id  = state.get("msg_id", 0)
+
+    async def edit(new_text: str, markup=None):
+        if markup is None:
+            markup = kb_sessions_cancel()
+        try:
+            await ctx.bot.edit_message_text(
+                chat_id=chat_id, message_id=msg_id,
+                text=new_text, parse_mode=ParseMode.HTML,
+                reply_markup=markup,
+            )
+        except Exception:
+            pass
+
+    # Hapus pesan input user agar chat rapi
+    try:
+        await update.message.delete()
+    except Exception:
+        pass
+
+    current = state.get("state")
+
+    # ── Langkah 1: API ID ─────────────────────────────────────────────────────
+    if current == SS_API_ID:
+        if not text.isdigit():
+            await edit(
+                f"<u><b>🔗 SETUP SESSIONS — Langkah 1/4</b></u>\n\n"
+                f"<blockquote>❌ <b>API ID harus berupa angka!</b>\n\nCoba lagi:</blockquote>"
+            )
+            return
+        _SESSION_SETUP[user.id]["api_id"]  = int(text)
+        _SESSION_SETUP[user.id]["state"]   = SS_API_HASH
+        await edit(
+            f"<u><b>🔗 SETUP SESSIONS — Langkah 2/4</b></u>\n\n"
+            f"<blockquote>"
+            f"✅ <b>API ID tersimpan:</b> <code>{text}</code>\n\n"
+            f"<b>🔑 Sekarang masukkan API Hash kamu:</b>\n\n"
+            f"<b>Format:</b> string panjang hex, contoh:\n"
+            f"<code>a1b2c3d4e5f6...</code>"
+            f"</blockquote>"
+        )
+
+    # ── Langkah 2: API Hash ───────────────────────────────────────────────────
+    elif current == SS_API_HASH:
+        if len(text) < 16:
+            await edit(
+                f"<u><b>🔗 SETUP SESSIONS — Langkah 2/4</b></u>\n\n"
+                f"<blockquote>❌ <b>API Hash terlalu pendek! Pastikan copy dengan benar.</b>\n\nCoba lagi:</blockquote>"
+            )
+            return
+        _SESSION_SETUP[user.id]["api_hash"] = text
+        _SESSION_SETUP[user.id]["state"]    = SS_PHONE
+        await edit(
+            f"<u><b>🔗 SETUP SESSIONS — Langkah 3/4</b></u>\n\n"
+            f"<blockquote>"
+            f"✅ <b>API Hash tersimpan</b>\n\n"
+            f"<b>📱 Masukkan nomor HP kamu:</b>\n\n"
+            f"<b>Format:</b> dengan kode negara, contoh:\n"
+            f"<code>+6281234567890</code>"
+            f"</blockquote>"
+        )
+
+    # ── Langkah 3: Nomor HP → kirim OTP ──────────────────────────────────────
+    elif current == SS_PHONE:
+        if not re.match(r"^\+?\d{8,15}$", text):
+            await edit(
+                f"<u><b>🔗 SETUP SESSIONS — Langkah 3/4</b></u>\n\n"
+                f"<blockquote>❌ <b>Format nomor tidak valid!</b>\n\nContoh: <code>+6281234567890</code>\n\nCoba lagi:</blockquote>"
+            )
+            return
+
+        _SESSION_SETUP[user.id]["phone"] = text
+        api_id   = _SESSION_SETUP[user.id]["api_id"]
+        api_hash = _SESSION_SETUP[user.id]["api_hash"]
+
+        # Animasi loading
+        anim_steps = [
+            "🔗 <b>SETUP SESSIONS</b>\n\n<blockquote>⏳ <b>Menghubungkan ke server Telegram...</b></blockquote>",
+            "🔗 <b>SETUP SESSIONS</b>\n\n<blockquote>🔄 <b>Memverifikasi API credentials...</b></blockquote>",
+            "🔗 <b>SETUP SESSIONS</b>\n\n<blockquote>📡 <b>Membuat koneksi aman...</b></blockquote>",
+            "🔗 <b>SETUP SESSIONS</b>\n\n<blockquote>📨 <b>Mengirim kode OTP ke nomor kamu...</b></blockquote>",
+        ]
+        for step in anim_steps:
+            try:
+                await ctx.bot.edit_message_text(
+                    chat_id=chat_id, message_id=msg_id,
+                    text=step, parse_mode=ParseMode.HTML,
+                )
+            except Exception:
+                pass
+            await asyncio.sleep(0.8)
+
+        try:
+            pclient = TelegramClient(StringSession(), api_id, api_hash)
+            await pclient.connect()
+            sent = await pclient.send_code_request(text)
+            _SESSION_SETUP[user.id]["pclient"]         = pclient
+            _SESSION_SETUP[user.id]["phone_code_hash"] = sent.phone_code_hash
+            _SESSION_SETUP[user.id]["state"]           = SS_OTP
+
+            await edit(
+                f"<u><b>🔗 SETUP SESSIONS — Langkah 4/4</b></u>\n\n"
+                f"<blockquote>"
+                f"✅ <b>OTP berhasil dikirim ke <code>{html.escape(text)}</code>!</b>\n\n"
+                f"<b>🔢 Masukkan kode OTP yang kamu terima:</b>\n\n"
+                f"<b>Format:</b> <code>12345</code>"
+                f"</blockquote>"
+            )
+        except Exception as e:
+            _SESSION_SETUP.pop(user.id, None)
+            await edit(
+                f"<u><b>🔗 SETUP SESSIONS — Gagal</b></u>\n\n"
+                f"<blockquote>"
+                f"❌ <b>Gagal terhubung ke Telegram!</b>\n\n"
+                f"<b>Detail:</b> <code>{html.escape(str(e)[:200])}</code>\n\n"
+                f"Periksa API ID dan API Hash kamu."
+                f"</blockquote>",
+                markup=kb_sessions_setup(),
+            )
+
+    # ── Langkah 4: OTP ───────────────────────────────────────────────────────
+    elif current == SS_OTP:
+        pclient         = state.get("pclient")
+        phone           = state["phone"]
+        phone_code_hash = state["phone_code_hash"]
+
+        if not pclient:
+            _SESSION_SETUP.pop(user.id, None)
+            await edit("❌ Session expired. Silahkan mulai setup ulang.", markup=kb_sessions_setup())
+            return
+
+        try:
+            await pclient.sign_in(phone, text, phone_code_hash=phone_code_hash)
+            await _finalize_session(user.id, pclient, chat_id, msg_id, ctx)
+
+        except PhoneCodeInvalidError:
+            await edit(
+                f"<u><b>🔗 SETUP SESSIONS — Langkah 4/4</b></u>\n\n"
+                f"<blockquote>❌ <b>Kode OTP salah!</b>\n\nCoba masukkan kode OTP lagi:</blockquote>"
+            )
+        except PhoneCodeExpiredError:
+            _SESSION_SETUP.pop(user.id, None)
+            try:
+                await pclient.disconnect()
+            except Exception:
+                pass
+            await edit(
+                f"<u><b>🔗 SETUP SESSIONS — Gagal</b></u>\n\n"
+                f"<blockquote>❌ <b>Kode OTP sudah kadaluarsa!</b>\n\nSilahkan mulai setup ulang.</blockquote>",
+                markup=kb_sessions_setup(),
+            )
+        except SessionPasswordNeededError:
+            _SESSION_SETUP[user.id]["state"] = SS_2FA
+            await edit(
+                f"<u><b>🔗 SETUP SESSIONS — 2FA</b></u>\n\n"
+                f"<blockquote>"
+                f"🔐 <b>Akun kamu menggunakan Two-Factor Authentication (2FA)!</b>\n\n"
+                f"<b>🔑 Masukkan password 2FA kamu:</b>"
+                f"</blockquote>"
+            )
+        except Exception as e:
+            _SESSION_SETUP.pop(user.id, None)
+            try:
+                await pclient.disconnect()
+            except Exception:
+                pass
+            await edit(
+                f"<u><b>🔗 SETUP SESSIONS — Gagal</b></u>\n\n"
+                f"<blockquote>❌ <b>Error:</b> <code>{html.escape(str(e)[:200])}</code></blockquote>",
+                markup=kb_sessions_setup(),
+            )
+
+    # ── Langkah 5: Password 2FA ───────────────────────────────────────────────
+    elif current == SS_2FA:
+        pclient = state.get("pclient")
+        if not pclient:
+            _SESSION_SETUP.pop(user.id, None)
+            await edit("❌ Session expired. Silahkan mulai setup ulang.", markup=kb_sessions_setup())
+            return
+        try:
+            await pclient.sign_in(password=text)
+            await _finalize_session(user.id, pclient, chat_id, msg_id, ctx)
+        except Exception as e:
+            await edit(
+                f"<u><b>🔗 SETUP SESSIONS — 2FA</b></u>\n\n"
+                f"<blockquote>"
+                f"❌ <b>Password 2FA salah!</b>\n\n"
+                f"<b>Detail:</b> <code>{html.escape(str(e)[:150])}</code>\n\n"
+                f"<b>Coba lagi:</b>"
+                f"</blockquote>"
+            )
+
+
+async def _finalize_session(admin_id: int, pclient: TelegramClient,
+                             chat_id: int, msg_id: int,
+                             ctx: ContextTypes.DEFAULT_TYPE):
+    """Simpan session yang berhasil dan tampilkan konfirmasi."""
+    global _client
+    session_str = pclient.session.save()
+    api_id      = _SESSION_SETUP[admin_id]["api_id"]
+    api_hash    = _SESSION_SETUP[admin_id]["api_hash"]
+
+    _save_sessions({"api_id": api_id, "api_hash": api_hash, "session": session_str})
+
+    # Reset global client supaya pakai credentials baru
+    if _client:
+        try:
+            await _client.disconnect()
+        except Exception:
+            pass
+        _client = None
+
+    _SESSION_SETUP.pop(admin_id, None)
+
+    sess_preview = session_str[:30] + "..." if len(session_str) > 30 else session_str
+    text = (
+        f"<u><b>🔗 SESSIONS</b></u>\n\n"
+        f"<blockquote>"
+        f"<b>✅ Sessions berhasil terhubung!</b>\n\n"
+        f"🔑 <b>API ID</b>    »  <b><code>{api_id}</code></b>\n"
+        f"🔐 <b>Session</b>  »  <b><code>{sess_preview}</code></b>\n\n"
+        f"<b>Bot bisa digunakan dengan akurat ✅</b>"
+        f"</blockquote>\n\n"
+        f"<u><b>Tekan tombol di bawah untuk kembali ke menu utama:</b></u>"
+    )
+    try:
+        await ctx.bot.edit_message_text(
+            chat_id=chat_id, message_id=msg_id,
+            text=text, parse_mode=ParseMode.HTML,
+            reply_markup=kb_sessions_done(),
+        )
+    except Exception:
+        pass
+
+    log.info(f"✅ Sessions berhasil dikonfigurasi oleh admin {admin_id}")
+
+    # Sambungkan client baru
+    try:
+        await telethon_client()
+    except Exception:
+        pass
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  BOT HANDLERS
+# ══════════════════════════════════════════════════════════════════════════════
+
 async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     user    = update.effective_user
     chat_id = update.effective_chat.id
-    log.info(f"/start dari {user.id} (@{user.username or '-'})")
+    log.info(f"/start dari {user.id} ({user.full_name})")
 
     msg = await safe_send_message(
-        ctx.bot,
-        chat_id=chat_id,
+        ctx.bot, chat_id=chat_id,
         text=(
             f"<b>{'─'*3} {E_HOURGLASS} <u>MEMPROSES DATA</u> {E_HOURGLASS} {'─'*3}</b>\n\n"
             f"<blockquote><b>{'─'*4} {E_CLOCK} Sedang memproses profil Anda, mohon tunggu...</b></blockquote>"
@@ -1105,35 +1442,33 @@ async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         uid      = user.id
         fname    = ((user.first_name or "") + " " + (user.last_name or "")).strip() or "Unknown"
         username = f"@{user.username}" if user.username else "Tidak Ada"
-        mention  = f"@{user.username}" if user.username else fname
         cname, chex, cemoji = profile_color(uid)
 
-        # Coba ambil info tambahan (DC, bio, foto) via Telethon — fallback jika gagal
         dc_id = dc_label(None)
         bio   = "-"
         photo = None
         try:
-            cl      = await telethon_client()
-            lookup  = f"@{user.username}" if user.username else user.id
-            entity  = await cl.get_entity(lookup)
-            full    = await cl(GetFullUserRequest(entity))
-            tg_user = full.users[0]
-            fu      = full.full_user
-            dc_id   = dc_label(getattr(getattr(tg_user, "photo", None), "dc_id", None))
-            bio     = getattr(fu, "about", None) or "-"
-            photo_buf = io.BytesIO()
-            await cl.download_profile_photo(entity, file=photo_buf)
-            photo_buf.seek(0)
-            photo = photo_buf.read() or None
+            cl = await telethon_client()
+            if cl:
+                lookup = f"@{user.username}" if user.username else user.id
+                entity = await cl.get_entity(lookup)
+                full   = await cl(GetFullUserRequest(entity))
+                tguser = full.users[0]
+                fu     = full.full_user
+                dc_id  = dc_label(getattr(getattr(tguser, "photo", None), "dc_id", None))
+                bio    = getattr(fu, "about", None) or "-"
+                photo_buf = io.BytesIO()
+                await cl.download_profile_photo(entity, file=photo_buf)
+                photo_buf.seek(0)
+                photo = photo_buf.read() or None
         except Exception as te:
             log.warning(f"Telethon lookup gagal (pakai data bot saja): {te}")
 
         d = {
             "type":       "user",
             "uid":        uid,
-            "mention":    mention,
-            "username":   username,
             "full_name":  fname,
+            "username":   username,
             "dc":         dc_id,
             "premium":    getattr(user, "is_premium", False) or False,
             "bot":        getattr(user, "is_bot", False) or False,
@@ -1153,18 +1488,18 @@ async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         track_user(uid, user.username, fname)
         await msg.delete()
         await send_user_card(chat_id, d, ctx, is_self=True)
-        log.info(f"✅ Kartu dikirim ke {uid}")
+        log.info(f"✅ Kartu dikirim ke {uid} ({fname})")
 
-        # Jika admin → kirim panel admin dengan loading animation
         if uid in ADMIN_IDS:
+            sess_ok   = is_session_configured()
             admin_msg = await ctx.bot.send_message(
                 chat_id, _LOADING_TEXT, parse_mode=ParseMode.HTML,
             )
             await asyncio.sleep(1.5)
-            adm_username, adm_dc, adm_total, adm_now = await _fetch_admin_panel_data(uid, user)
+            adm_fname, adm_dc, adm_total, adm_now = await _fetch_admin_panel_data(uid, user)
             await admin_msg.edit_text(
-                _admin_panel_text(adm_username, uid, adm_dc, adm_total, adm_now),
-                parse_mode=ParseMode.HTML, reply_markup=kb_admin(),
+                _admin_panel_text(adm_fname, uid, adm_dc, adm_total, adm_now, session_ok=sess_ok),
+                parse_mode=ParseMode.HTML, reply_markup=kb_admin(session_ok=sess_ok),
             )
 
     except Exception as e:
@@ -1173,16 +1508,20 @@ async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             await msg.delete()
         except Exception:
             pass
-        await ctx.bot.send_message(
-            chat_id, _err_msg(str(e)), parse_mode=ParseMode.HTML
-        )
+        await ctx.bot.send_message(chat_id, _err_msg(str(e)), parse_mode=ParseMode.HTML)
 
 
 async def cmd_msg(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     if not update.message or not update.message.text:
         return
+    user    = update.effective_user
     text    = update.message.text.strip()
     chat_id = update.effective_chat.id
+
+    # Intersep input dari admin yang sedang di alur setup sessions
+    if user.id in ADMIN_IDS and user.id in _SESSION_SETUP:
+        await _handle_session_input(update, ctx)
+        return
 
     if text.lstrip("-").isdigit():
         identifier = int(text)
@@ -1204,9 +1543,18 @@ async def cmd_msg(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     try:
         msg = await update.message.reply_text(_loading_text, parse_mode=ParseMode.HTML)
     except Exception:
-        msg = await update.message.reply_text(strip_tgemoji(_loading_text), parse_mode=ParseMode.HTML)
+        msg = await update.message.reply_text(_strip_tgemoji(_loading_text), parse_mode=ParseMode.HTML)
+
     try:
-        cl     = await telethon_client()
+        cl = await telethon_client()
+        if not cl:
+            await safe_edit_text(
+                msg,
+                text="⚠️ <b>Sessions belum dikonfigurasi!</b>\n\nGunakan /admin → 🟢 Sessions untuk setup.",
+                parse_mode=ParseMode.HTML,
+            )
+            return
+
         entity = await cl.get_entity(identifier)
         await msg.delete()
 
@@ -1254,11 +1602,12 @@ async def cmd_admin(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         return
     msg = await update.message.reply_text(_LOADING_TEXT, parse_mode=ParseMode.HTML)
     await asyncio.sleep(1.5)
-    uid = user.id
-    username, dc_str, total_users, now = await _fetch_admin_panel_data(uid, user)
+    uid       = user.id
+    sess_ok   = is_session_configured()
+    fname, dc_str, total_users, now = await _fetch_admin_panel_data(uid, user)
     await msg.edit_text(
-        _admin_panel_text(username, uid, dc_str, total_users, now),
-        parse_mode=ParseMode.HTML, reply_markup=kb_admin(),
+        _admin_panel_text(fname, uid, dc_str, total_users, now, session_ok=sess_ok),
+        parse_mode=ParseMode.HTML, reply_markup=kb_admin(session_ok=sess_ok),
     )
 
 
@@ -1285,7 +1634,6 @@ async def cmd_broadcast(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("⛔ <b>Akses ditolak. Hanya admin!</b>", parse_mode=ParseMode.HTML)
         return
 
-    # Teks broadcast = semua setelah /broadcast
     text = " ".join(ctx.args).strip() if ctx.args else ""
     if not text:
         await update.message.reply_text(
@@ -1326,44 +1674,6 @@ async def cmd_broadcast(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     )
 
 
-async def on_error(update: object, ctx: ContextTypes.DEFAULT_TYPE):
-    log.error(f"Bot error: {ctx.error}")
-
-
-async def on_startup(app):
-    try:
-        await telethon_client()
-    except Exception as e:
-        log.error(f"Telethon startup error: {e}")
-
-
-# ══════════════════════════════════════════════════════════════════════════════
-#  ENTRY POINT
-# ══════════════════════════════════════════════════════════════════════════════
-
-def _read_session_from_env() -> str:
-    """Baca TELETHON_SESSION langsung dari file .env (hindari truncation)."""
-    env_path = ENV_FILE
-    if env_path.exists():
-        for line in env_path.read_text(encoding="utf-8").splitlines():
-            if line.startswith("TELETHON_SESSION="):
-                val = line.split("=", 1)[1].strip()
-                if val:
-                    return val
-    return ""
-
-
-def _is_valid_session(sess: str) -> bool:
-    """Cek apakah session string adalah Telethon StringSession yang valid.
-    Session valid berupa string base64 panjang (>= 100 karakter).
-    Placeholder seperti 'isi_setelah_jalankan_gensession' dianggap tidak valid.
-    """
-    if not sess or len(sess) < 100:
-        return False
-    valid_chars = set("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=_-")
-    return all(c in valid_chars for c in sess.strip())
-
-
 # ══════════════════════════════════════════════════════════════════════════════
 #  CALLBACK QUERY HANDLER
 # ══════════════════════════════════════════════════════════════════════════════
@@ -1373,7 +1683,101 @@ async def cmd_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     await q.answer()
     cid = q.message.chat_id
 
-    if q.data == "help_user":
+    # ── Callbacks panel admin ─────────────────────────────────────────────────
+    if q.data == "admin_back":
+        if q.from_user.id not in ADMIN_IDS:
+            await q.answer("⛔ Hanya admin!", show_alert=True)
+            return
+        uid    = q.from_user.id
+        sess_ok = is_session_configured()
+        fname, dc_str, total_users, now = await _fetch_admin_panel_data(uid, q.from_user)
+        await q.edit_message_text(
+            _admin_panel_text(fname, uid, dc_str, total_users, now, session_ok=sess_ok),
+            parse_mode=ParseMode.HTML, reply_markup=kb_admin(session_ok=sess_ok),
+        )
+        return
+
+    elif q.data == "admin_broadcast":
+        if q.from_user.id not in ADMIN_IDS:
+            await q.answer("⛔ Hanya admin!", show_alert=True)
+            return
+        await q.edit_message_text(
+            f"<u><b>🔵 BROADCAST</b></u>\n\n"
+            f"<blockquote>"
+            f"Kirim pesan ke <b>seluruh pengguna bot</b> sekaligus.\n\n"
+            f"📋 <b>Format perintah:</b>\n"
+            f"<code>/broadcast pesan kamu di sini</code>\n\n"
+            f"💡 <b>Contoh:</b>\n"
+            f"<code>/broadcast Halo semua! Ada update baru nih 🔥</code>"
+            f"</blockquote>",
+            parse_mode=ParseMode.HTML, reply_markup=kb_admin_back(),
+        )
+        return
+
+    elif q.data == "admin_stats":
+        if q.from_user.id not in ADMIN_IDS:
+            await q.answer("⛔ Hanya admin!", show_alert=True)
+            return
+        total = len(get_all_user_ids())
+        now   = datetime.now(timezone(timedelta(hours=8))).strftime("%d/%m/%Y %H:%M WITA")
+        await q.edit_message_text(
+            f"<u><b>🟡 STATISTIK BOT</b></u>\n\n"
+            f"<blockquote>"
+            f"👥 <b>Total Pengguna</b>  »  <b>{total:,}</b>\n"
+            f"🕐 <b>Waktu Sekarang</b>  »  <b>{now}</b>"
+            f"</blockquote>",
+            parse_mode=ParseMode.HTML, reply_markup=kb_admin_back(),
+        )
+        return
+
+    # ── Sessions callbacks ────────────────────────────────────────────────────
+    elif q.data == "admin_sessions":
+        if q.from_user.id not in ADMIN_IDS:
+            await q.answer("⛔ Hanya admin!", show_alert=True)
+            return
+        sess_ok = is_session_configured()
+        await q.edit_message_text(
+            _sessions_page_text(sess_ok),
+            parse_mode=ParseMode.HTML,
+            reply_markup=kb_sessions_setup(),
+            disable_web_page_preview=True,
+        )
+        return
+
+    elif q.data == "sessions_start":
+        if q.from_user.id not in ADMIN_IDS:
+            await q.answer("⛔ Hanya admin!", show_alert=True)
+            return
+        await _start_sessions_flow(
+            bot=ctx.bot,
+            admin_id=q.from_user.id,
+            chat_id=cid,
+            msg_id=q.message.message_id,
+        )
+        return
+
+    elif q.data == "sessions_cancel":
+        if q.from_user.id not in ADMIN_IDS:
+            await q.answer("⛔ Hanya admin!", show_alert=True)
+            return
+        state = _SESSION_SETUP.pop(q.from_user.id, {})
+        pclient = state.get("pclient")
+        if pclient:
+            try:
+                await pclient.disconnect()
+            except Exception:
+                pass
+        sess_ok = is_session_configured()
+        await q.edit_message_text(
+            _sessions_page_text(sess_ok),
+            parse_mode=ParseMode.HTML,
+            reply_markup=kb_sessions_setup(),
+            disable_web_page_preview=True,
+        )
+        return
+
+    # ── Callback umum ─────────────────────────────────────────────────────────
+    elif q.data == "help_user":
         text = (
             "📊 <b>Cara Cek User</b>\n\n"
             "Kirim salah satu ke bot ini:\n"
@@ -1392,9 +1796,10 @@ async def cmd_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     elif q.data == "myid":
         user = q.from_user
         cname, chex, cemoji = profile_color(user.id)
-        text = (
+        fname = user.full_name or "Unknown"
+        text  = (
             f"👤 <b>Info ID Kamu</b>\n\n"
-            f"• <b>Nama:</b> {html.escape(user.full_name)}\n"
+            f"• <b>Nama:</b> {html.escape(fname)}\n"
             f"• <b>ID:</b> <code>{user.id}</code>\n"
             f"• <b>Username:</b> {'@' + user.username if user.username else '—'}\n"
             f"• <b>Warna Profil:</b> {cemoji} {cname}\n"
@@ -1403,90 +1808,62 @@ async def cmd_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         )
         await ctx.bot.send_message(cid, text, parse_mode=ParseMode.HTML, reply_markup=kb())
         return
-
-    # ── Callback panel admin ───────────────────────────────────────────────────
-    elif q.data == "admin_broadcast":
-        if q.from_user.id not in ADMIN_IDS:
-            await q.answer("⛔ Hanya admin!", show_alert=True)
-            return
-        text = (
-            f"<u><b>📣 BROADCAST</b></u>\n\n"
-            f"<blockquote>"
-            f"Kirim pesan ke <b>seluruh pengguna bot</b> sekaligus.\n\n"
-            f"📋 <b>Format perintah:</b>\n"
-            f"<code>/broadcast pesan kamu di sini</code>\n\n"
-            f"💡 <b>Contoh:</b>\n"
-            f"<code>/broadcast Halo semua! Ada update baru nih 🔥</code>"
-            f"</blockquote>"
-        )
-        await q.edit_message_text(text, parse_mode=ParseMode.HTML, reply_markup=kb_admin_back())
-        return
-
-    elif q.data == "admin_stats":
-        if q.from_user.id not in ADMIN_IDS:
-            await q.answer("⛔ Hanya admin!", show_alert=True)
-            return
-        total = len(get_all_user_ids())
-        now   = datetime.now(timezone(timedelta(hours=8))).strftime("%d/%m/%Y %H:%M WITA")
-        text = (
-            f"<u><b>📊 STATISTIK BOT</b></u>\n\n"
-            f"<blockquote>"
-            f"👥 <b>Total Pengguna</b>  »  <b>{total:,}</b>\n"
-            f"🕐 <b>Waktu Sekarang</b>  »  <b>{now}</b>"
-            f"</blockquote>"
-        )
-        await q.edit_message_text(text, parse_mode=ParseMode.HTML, reply_markup=kb_admin_back())
-        return
-
-    elif q.data == "admin_back":
-        if q.from_user.id not in ADMIN_IDS:
-            await q.answer("⛔ Hanya admin!", show_alert=True)
-            return
-        uid  = q.from_user.id
-        adm_username, adm_dc, adm_total, adm_now = await _fetch_admin_panel_data(uid, q.from_user)
-        await q.edit_message_text(
-            _admin_panel_text(adm_username, uid, adm_dc, adm_total, adm_now),
-            parse_mode=ParseMode.HTML, reply_markup=kb_admin(),
-        )
-        return
-
     else:
         text = "❓ Perintah tidak dikenal."
-        await ctx.bot.send_message(cid, text, parse_mode=ParseMode.HTML, reply_markup=kb())
-        return
 
+    await ctx.bot.send_message(cid, text, parse_mode=ParseMode.HTML, reply_markup=kb())
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  STARTUP & ERROR
+# ══════════════════════════════════════════════════════════════════════════════
+
+async def on_startup(app):
+    """Jalankan saat bot start: cek sessions, notif admin jika belum terhubung."""
+    if is_session_configured():
+        try:
+            await telethon_client()
+            log.info("✅ Telethon sessions aktif saat startup.")
+        except Exception as e:
+            log.error(f"Telethon startup error: {e}")
+    else:
+        log.warning("⚠️  Sessions belum dikonfigurasi. Notifikasi admin...")
+        for admin_id in ADMIN_IDS:
+            try:
+                await app.bot.send_message(
+                    admin_id,
+                    f"<u><b>🤖 CekID Bot — Aktif!</b></u>\n\n"
+                    f"<blockquote>"
+                    f"⚠️ <b>Sessions belum terhubung!</b>\n\n"
+                    f"Silahkan hubungkan sessions agar bot bisa bekerja secara penuh.\n\n"
+                    f"Tekan tombol di bawah untuk memulai setup:"
+                    f"</blockquote>",
+                    parse_mode=ParseMode.HTML,
+                    reply_markup=kb_notify_sessions(),
+                )
+            except Exception as e:
+                log.warning(f"Gagal notif admin {admin_id}: {e}")
+
+
+async def on_error(update: object, ctx: ContextTypes.DEFAULT_TYPE):
+    log.error(f"Bot error: {ctx.error}")
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  ENTRY POINT
+# ══════════════════════════════════════════════════════════════════════════════
 
 def main():
-    # ── Validasi wajib ──────────────────────────────────────────────────────────
     if not BOT_TOKEN:
         print("\n❌ BOT_TOKEN belum diisi di .env!\n")
         sys.exit(1)
-    if not TELETHON_API_ID or not TELETHON_API_HASH:
-        print("\n❌ TELETHON_API_ID / TELETHON_API_HASH belum diisi di .env!\n")
-        sys.exit(1)
 
-    # ── Cek session — WAJIB generate session dulu sebelum bot bisa jalan ───────
-    sess = _read_session_from_env()
-    if "--gensession" in sys.argv or not _is_valid_session(sess):
-        if not _is_valid_session(sess):
-            print("\n" + "═" * 55)
-            print("  ⚠️  TELETHON SESSION BELUM ADA ATAU TIDAK VALID!")
-            print("  Bot tidak bisa jalan tanpa session yang valid.")
-            print("  Memulai proses generate session otomatis...")
-            print("═" * 55 + "\n")
-        asyncio.run(_run_gensession())
-        if "--gensession" in sys.argv:
-            return
-        # Validasi ulang setelah gensession
-        sess = _read_session_from_env()
-        if not _is_valid_session(sess):
-            print("\n❌ Session gagal dibuat. Jalankan ulang: python3 main.py --gensession\n")
-            sys.exit(1)
-        print("\n▶️  Session tersimpan. Memulai bot...\n")
-        # asyncio.run() menutup event loop — buat baru sebelum PTB start
-        asyncio.set_event_loop(asyncio.new_event_loop())
+    log.info("🤖 Memulai CekID Bot v2.0...")
 
-    log.info("🤖 Memulai CekID Bot...")
+    if not is_session_configured():
+        log.warning("⚠️  Sessions belum dikonfigurasi. Bot aktif, tapi fitur cek akun belum tersedia.")
+        log.warning("    Gunakan /admin → 🟢 Sessions untuk setup via bot.")
+
     app = ApplicationBuilder().token(BOT_TOKEN).post_init(on_startup).build()
     app.add_handler(CommandHandler("start",     cmd_start))
     app.add_handler(CommandHandler("admin",     cmd_admin))
