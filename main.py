@@ -523,31 +523,31 @@ async def _run_gensession():
 def ce(emoji_id: str, fallback: str) -> str:
     return f'<tg-emoji emoji-id="{emoji_id}">{fallback}</tg-emoji>'
 
-E_MENTION   = ce("4909285470598333031", "⭐")
-E_ID        = ce("5089568170251911687", "🔑")
-E_USERNAME  = ce("5188381825701021648", "🌐")
-E_DC        = ce("4906902450943820893", "💻")
-E_PREMIUM   = ce("4907219728767910669", "💎")
-E_DATE      = ce("4913632707646325447", "📆")
-E_COLOR     = ce("4908971929395791571", "🎨")
-E_BOT       = ce("4906908665761497930", "🚀")
-E_SCAM      = ce("6269245551586316810", "🚫")
-E_RESTRICT  = ce("5215669479509335000", "🛡")
-E_VERIFIED  = ce("5086854541194822683", "✅")
-E_BIO       = ce("5215209935188534658", "📋")
-E_LASTSEEN  = ce("4909244268977062445", "⏳")
-E_CHATID    = ce("5089568170251911687", "🔑")
-E_TITLE     = ce("4909285470598333031", "⭐")
-E_TYPE      = ce("6269223265001017592", "🔴")
-E_FAKE      = ce("6269245551586316810", "🚫")
-E_NOFORWARD = ce("5215669479509335000", "🛡")
-E_MEMBERS   = ce("5089320092940895083", "👥")
-E_DESC      = ce("5215209935188534658", "📋")
-E_INFO      = ce("5258503720928288433", "ℹ️")
-E_ROCKET    = ce("4906908665761497930", "🚀")
-E_BELL      = ce("6271271702408204490", "🔔")
-E_HOURGLASS = ce("4909244268977062445", "⏳")
-E_CLOCK     = ce("4909244268977062445", "⏳")
+E_MENTION   = ce("5852636219250317264", "⭐")   # star
+E_ID        = ce("5969696910112463071", "🪪")   # ID card
+E_USERNAME  = ce("5447410659077661506", "🌐")   # globe
+E_DC        = ce("6003735582495216112", "📡")   # telegram/signal
+E_PREMIUM   = ce("5348136664738839786", "💎")   # special/premium
+E_DATE      = ce("5413879192267805083", "📅")   # calendar
+E_COLOR     = ce("5395444784611480792", "🎨")   # pencil/color
+E_BOT       = ce("5188481279963715781", "🚀")   # rocket
+E_SCAM      = ce("5424972470023104089", "🚫")   # fire/danger
+E_RESTRICT  = ce("5424972470023104089", "🛡")   # fire/danger
+E_VERIFIED  = ce("5852636219250317264", "✅")   # star
+E_BIO       = ce("5395444784611480792", "📋")   # pencil
+E_LASTSEEN  = ce("5413879192267805083", "⏳")   # calendar
+E_CHATID    = ce("5969696910112463071", "🪪")   # ID card
+E_TITLE     = ce("5852636219250317264", "⭐")   # star
+E_TYPE      = ce("5424972470023104089", "🔴")   # fire
+E_FAKE      = ce("5424972470023104089", "🚫")   # fire/danger
+E_NOFORWARD = ce("5348136664738839786", "🛡")   # special
+E_MEMBERS   = ce("5348136664738839786", "👥")   # special
+E_DESC      = ce("5395444784611480792", "📋")   # pencil
+E_INFO      = ce("6003735582495216112", "ℹ️")   # telegram/info
+E_ROCKET    = ce("5188481279963715781", "🚀")   # rocket
+E_BELL      = ce("6271271702408204490", "🔔")   # bell
+E_HOURGLASS = ce("5413879192267805083", "⏳")   # calendar
+E_CLOCK     = ce("5413879192267805083", "⏳")   # calendar
 
 # ── Premium emoji — HTML-to-MessageEntity converter ───────────────────────────
 # Telegram Bot API mendukung custom emoji via MessageEntity(type='custom_emoji').
