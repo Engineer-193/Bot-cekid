@@ -24,7 +24,7 @@ import random
 def _ensure_deps():
     import subprocess
     pkgs = [
-        "python-telegram-bot==21.11.1",
+        "python-telegram-bot[all]==22.8",
         "telethon==1.38.1",
         "Pillow==11.2.1",
         "python-dotenv==1.1.1",
@@ -63,7 +63,7 @@ from telegram.ext import (
     ApplicationBuilder, CommandHandler, MessageHandler,
     CallbackQueryHandler, filters, ContextTypes,
 )
-from telegram.constants import ParseMode
+from telegram.constants import ParseMode, KeyboardButtonStyle as KBS
 
 from telethon import TelegramClient
 from telethon.sessions import StringSession
@@ -966,61 +966,54 @@ def caption_chat(d: dict) -> str:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  KEYBOARDS — button warna-warni style Telegram Bot API
+#  KEYBOARDS  (PTB v22.8 — style= native button colors)
+#  primary = biru | success = hijau | danger = merah
 # ══════════════════════════════════════════════════════════════════════════════
-#  Palet warna via emoji:
-#  🔵 Primary/Biru  🔘 Secondary/Abu  🟢 Success/Hijau  🔴 Danger/Merah
-#  🟡 Warning/Kuning  🔷 Info/Biru Muda  ⬜ Light/Putih  ⬛ Dark/Hitam
 
 def kb() -> InlineKeyboardMarkup:
-    """Keyboard user biasa — JOIN STORE pakai warna Merah (Danger)."""
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("🔴  JOIN STORE KAMI", url=STORE_LINK)],
+        [InlineKeyboardButton("🛒  JOIN STORE KAMI", url=STORE_LINK, style=KBS.DANGER)],
     ])
 
 
 def kb_admin(session_ok: bool = False) -> InlineKeyboardMarkup:
-    """Panel admin — tiap tombol warna berbeda, Sessions hijau (Success)."""
-    sess_label = "🟢  Sessions  ✅" if session_ok else "🟢  Sessions  ⚠️ Belum Terhubung"
+    sess_label = "🔗  Sessions  ✅" if session_ok else "🔗  Sessions  ⚠️ Belum Terhubung"
+    sess_style = KBS.SUCCESS
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("🔵  BROADCAST",      callback_data="admin_broadcast")],
-        [InlineKeyboardButton("🟡  Statistik Bot",  callback_data="admin_stats")],
-        [InlineKeyboardButton(sess_label,            callback_data="admin_sessions")],
+        [InlineKeyboardButton("📣  BROADCAST",     callback_data="admin_broadcast", style=KBS.DANGER)],
+        [InlineKeyboardButton("📊  Statistik Bot", callback_data="admin_stats",     style=KBS.PRIMARY)],
+        [InlineKeyboardButton(sess_label,          callback_data="admin_sessions",  style=sess_style)],
     ])
 
 
 def kb_admin_back() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("🔷  Kembali ke Panel Admin", callback_data="admin_back")],
+        [InlineKeyboardButton("🔙  Kembali ke Panel Admin", callback_data="admin_back", style=KBS.PRIMARY)],
     ])
 
 
 def kb_sessions_setup() -> InlineKeyboardMarkup:
-    """Keyboard di halaman Sessions."""
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("🟢  Mulai Setup Sessions", callback_data="sessions_start")],
-        [InlineKeyboardButton("🔷  Kembali ke Panel Admin", callback_data="admin_back")],
+        [InlineKeyboardButton("⚙️  Mulai Setup Sessions",   callback_data="sessions_start", style=KBS.SUCCESS)],
+        [InlineKeyboardButton("🔙  Kembali ke Panel Admin", callback_data="admin_back",     style=KBS.PRIMARY)],
     ])
 
 
 def kb_sessions_cancel() -> InlineKeyboardMarkup:
-    """Tombol cancel saat di tengah alur setup."""
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("🔴  Batalkan Setup", callback_data="sessions_cancel")],
+        [InlineKeyboardButton("✖️  Batalkan Setup", callback_data="sessions_cancel", style=KBS.DANGER)],
     ])
 
 
 def kb_sessions_done() -> InlineKeyboardMarkup:
-    """Setelah sessions berhasil terhubung."""
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("🔷  Kembali ke Menu Utama", callback_data="admin_back")],
+        [InlineKeyboardButton("🔙  Kembali ke Menu Utama", callback_data="admin_back", style=KBS.SUCCESS)],
     ])
 
 
 def kb_notify_sessions() -> InlineKeyboardMarkup:
-    """Notifikasi startup — shortcut ke Sessions."""
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("🟢  Hubungkan Sessions", callback_data="admin_sessions")],
+        [InlineKeyboardButton("🔗  Hubungkan Sessions", callback_data="admin_sessions", style=KBS.SUCCESS)],
     ])
 
 
